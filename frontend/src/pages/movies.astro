@@ -1,0 +1,421 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+
+<Layout title="Movies">
+  <div class="max-w-7xl mx-auto mt-8 px-4">
+    <div class="flex flex-col lg:flex-row gap-8">
+      <!-- Sidebar -->
+      <div class="lg:w-64">
+        <div class="bg-white rounded-lg shadow-md p-6">
+          <h3 class="text-lg font-semibold mb-4">Filter Movies</h3>
+
+          <div class="space-y-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-2">Category</label>
+              <select id="categoryFilter" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="popular">Popular</option>
+                <option value="trending">Trending</option>
+                <option value="box-office">Box Office</option>
+                <option value="watched">Most Watched</option>
+                <option value="favorited">Most Favorited</option>
+              </select>
+            </div>
+
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-2">Search</label>
+              <input
+                type="text"
+                id="searchInput"
+                placeholder="Search movies..."
+                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+            </div>
+
+            <button id="searchBtn" class="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 transition-colors">
+              Search
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Main Content -->
+      <div class="flex-1">
+        <div class="bg-white rounded-lg shadow-md p-6">
+          <div class="flex justify-between items-center mb-6">
+            <h1 class="text-3xl font-bold">Movies</h1>
+            <div class="flex items-center gap-4">
+              <span id="movieCount" class="text-sm text-gray-600">Loading...</span>
+              <button id="refreshBtn" class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1 rounded-md transition-colors">
+                🔄
+              </button>
+            </div>
+          </div>
+
+          <div id="moviesGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <!-- Movies will be populated here -->
+          </div>
+
+          <div id="loadingState" class="text-center py-12">
+            <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <p class="mt-2 text-gray-600">Loading movies...</p>
+          </div>
+
+          <div id="errorState" class="text-center py-12 hidden">
+            <div class="text-gray-400 text-6xl mb-4">❌</div>
+            <h3 class="text-xl font-semibold text-gray-600 mb-2">Failed to load movies</h3>
+            <p class="text-gray-500 mb-4">Please try again later</p>
+            <button onclick="loadMovies()" class="bg-blue-600 text-white px-6 py-2 rounded-md hover:bg-blue-700 transition-colors">
+              Retry
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Movie Details Modal -->
+  <div id="movieModal" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center z-50">
+    <div class="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+      <div class="flex justify-between items-start mb-4">
+        <h3 id="modalTitle" class="text-2xl font-bold"></h3>
+        <button onclick="hideMovieModal()" class="text-gray-500 hover:text-gray-700 text-2xl">
+          ×
+        </button>
+      </div>
+
+      <div id="modalContent">
+        <!-- Movie details will be populated here -->
+      </div>
+    </div>
+  </div>
+
+  <div id="message" class="fixed top-4 right-4 p-4 rounded-md hidden z-50"></div>
+
+  <script>
+    const token = localStorage.getItem('authToken');
+    let currentMovies = [];
+
+    // Add to watchlist function
+    async function addToWatchlist(movieId, title) {
+      if (!token) {
+        showMessage('Please login to add to watchlist', 'error');
+        return;
+      }
+
+      try {
+        const response = await fetch('http://localhost:3000/api/watchlist', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            movieId: movieId,
+            notes: `Added from movies page: ${title}`,
+            priority: 'medium'
+          })
+        });
+
+        if (response.ok) {
+          showMessage(`${title} added to watchlist`, 'success');
+        } else {
+          const result = await response.json();
+          showMessage(result.message || 'Failed to add to watchlist', 'error');
+        }
+      } catch (error) {
+        showMessage('Network error', 'error');
+      }
+    }
+
+    async function loadMovies(category = 'popular') {
+      const loadingState = document.getElementById('loadingState');
+      const errorState = document.getElementById('errorState');
+      const moviesGrid = document.getElementById('moviesGrid');
+      const movieCount = document.getElementById('movieCount');
+
+      loadingState.classList.remove('hidden');
+      errorState.classList.add('hidden');
+      moviesGrid.innerHTML = '';
+
+      try {
+        let endpoint;
+        switch (category) {
+          case 'popular':
+            endpoint = 'http://localhost:3000/api/trakt-new/movies/popular';
+            break;
+          case 'trending':
+            endpoint = 'http://localhost:3000/api/trakt-new/movies/trending';
+            break;
+          case 'box-office':
+            endpoint = 'http://localhost:3000/api/trakt-new/movies/box-office';
+            break;
+          case 'watched':
+            endpoint = 'http://localhost:3000/api/trakt-new/movies/watched';
+            break;
+          case 'favorited':
+            endpoint = 'http://localhost:3000/api/trakt-new/movies/favorited';
+            break;
+          default:
+            endpoint = 'http://localhost:3000/api/trakt-new/movies/popular';
+        }
+
+        const response = await fetch(endpoint);
+
+        if (response.ok) {
+          currentMovies = await response.json();
+          renderMovies(currentMovies);
+          movieCount.textContent = `${currentMovies.length} movies`;
+        } else {
+          throw new Error('Failed to fetch movies');
+        }
+      } catch (error) {
+        console.error('Error loading movies:', error);
+        errorState.classList.remove('hidden');
+        movieCount.textContent = '';
+      } finally {
+        loadingState.classList.add('hidden');
+      }
+    }
+
+    function renderMovies(movies) {
+      const moviesGrid = document.getElementById('moviesGrid');
+
+      if (!movies || movies.length === 0) {
+        moviesGrid.innerHTML = `
+          <div class="col-span-full text-center py-12">
+            <div class="text-gray-400 text-6xl mb-4">🎬</div>
+            <h3 class="text-xl font-semibold text-gray-600 mb-2">No movies found</h3>
+            <p class="text-gray-500">Try a different category or search term</p>
+          </div>
+        `;
+        return;
+      }
+
+      moviesGrid.innerHTML = movies.map(movie => `
+        <div class="bg-gray-50 rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer"
+             data-navigate-to-movie
+             data-movie-id="${movie.id || movie.ids?.trakt}">
+          <div class="aspect-[2/3] bg-gray-200 rounded-md mb-3 flex items-center justify-center">
+            ${movie.poster ?
+              `<img src="${movie.poster}" alt="${movie.title}" class="w-full h-full object-cover rounded-md">` :
+              `<div class="text-gray-400 text-4xl">🎬</div>`
+            }
+          </div>
+
+          <h4 class="font-semibold text-sm mb-1 line-clamp-2">${movie.title || movie.movie?.title}</h4>
+
+          <div class="flex justify-between items-center text-xs text-gray-600">
+            <span>${movie.year || movie.movie?.year || 'N/A'}</span>
+            ${movie.rating ?
+              `<span class="text-yellow-500">⭐ ${movie.rating}</span>` :
+              ''
+            }
+          </div>
+
+          ${movie.genres && movie.genres.length > 0 ? `
+            <div class="mt-2">
+              <span class="text-xs text-gray-500">
+                ${movie.genres.slice(0, 2).join(', ')}
+                ${movie.genres.length > 2 ? '...' : ''}
+              </span>
+            </div>
+          ` : ''}
+
+          ${token ? `
+            <div class="mt-3 flex gap-2">
+              <button data-add-to-watchlist
+                      data-movie-id="${movie.id || movie.ids?.trakt}"
+                      data-movie-title="${movie.title || movie.movie?.title}"
+                      class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200 transition-colors">
+                + Watchlist
+              </button>
+            </div>
+          ` : ''}
+        </div>
+      `).join('');
+    }
+
+    async function showMovieDetails(movieId) {
+      try {
+        const response = await fetch(`http://localhost:3000/api/trakt-new/movies/${movieId}`);
+
+        if (response.ok) {
+          const movie = await response.json();
+          displayMovieModal(movie);
+        } else {
+          showMessage('Failed to load movie details', 'error');
+        }
+      } catch (error) {
+        showMessage('Network error', 'error');
+      }
+    }
+
+    function displayMovieModal(movie) {
+      const modal = document.getElementById('movieModal');
+      const modalTitle = document.getElementById('modalTitle');
+      const modalContent = document.getElementById('modalContent');
+
+      modalTitle.textContent = movie.title || movie.movie?.title || 'Movie Details';
+
+      modalContent.innerHTML = `
+        <div class="space-y-4">
+          ${movie.poster ? `
+            <div class="flex justify-center">
+              <img src="${movie.poster}" alt="${movie.title}" class="max-w-xs rounded-lg shadow-md">
+            </div>
+          ` : ''}
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <h4 class="font-semibold mb-2">Information</h4>
+              <p><strong>Year:</strong> ${movie.year || movie.movie?.year || 'N/A'}</p>
+              <p><strong>Runtime:</strong> ${movie.runtime ? `${movie.runtime} min` : 'N/A'}</p>
+              ${movie.rating ? `<p><strong>Rating:</strong> ⭐ ${movie.rating}</p>` : ''}
+              ${movie.genres ? `<p><strong>Genres:</strong> ${movie.genres.join(', ')}</p>` : ''}
+            </div>
+
+            <div>
+              <h4 class="font-semibold mb-2">Overview</h4>
+              <p class="text-sm text-gray-600">${movie.overview || movie.plot || 'No overview available.'}</p>
+            </div>
+          </div>
+
+          ${token ? `
+            <div class="flex gap-3 pt-4 border-t">
+              <button data-modal-add-to-watchlist
+                      data-movie-id="${movie.id || movie.ids?.trakt}"
+                      data-movie-title="${movie.title || movie.movie?.title}"
+                      class="flex-1 bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 transition-colors">
+                Add to Watchlist
+              </button>
+              <button data-close-modal
+                      class="flex-1 bg-gray-300 text-gray-700 py-2 px-4 rounded-md hover:bg-gray-400 transition-colors">
+                Close
+              </button>
+            </div>
+          ` : `
+            <div class="pt-4 border-t">
+              <button data-close-modal
+                      class="w-full bg-gray-300 text-gray-700 py-2 px-4 rounded-md hover:bg-gray-400 transition-colors">
+                Close
+              </button>
+            </div>
+          `}
+        </div>
+      `;
+
+      modal.classList.remove('hidden');
+    }
+
+    function hideMovieModal() {
+      document.getElementById('movieModal').classList.add('hidden');
+    }
+
+    
+    async function searchMovies() {
+      const searchTerm = document.getElementById('searchInput').value.trim();
+
+      if (!searchTerm) {
+        loadMovies(document.getElementById('categoryFilter').value);
+        return;
+      }
+
+      const loadingState = document.getElementById('loadingState');
+      const errorState = document.getElementById('errorState');
+      const moviesGrid = document.getElementById('moviesGrid');
+
+      loadingState.classList.remove('hidden');
+      errorState.classList.add('hidden');
+      moviesGrid.innerHTML = '';
+
+      try {
+        const response = await fetch(`http://localhost:3000/api/trakt-new/search/movie?query=${encodeURIComponent(searchTerm)}`);
+
+        if (response.ok) {
+          const results = await response.json();
+          currentMovies = results.map(result => result.movie || result);
+          renderMovies(currentMovies);
+          document.getElementById('movieCount').textContent = `${currentMovies.length} results for "${searchTerm}"`;
+        } else {
+          throw new Error('Search failed');
+        }
+      } catch (error) {
+        console.error('Search error:', error);
+        errorState.classList.remove('hidden');
+        document.getElementById('movieCount').textContent = '';
+      } finally {
+        loadingState.classList.add('hidden');
+      }
+    }
+
+    function showMessage(text, type) {
+      const messageDiv = document.getElementById('message');
+      messageDiv.textContent = text;
+      messageDiv.className = `fixed top-4 right-4 p-4 rounded-md z-50 ${type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`;
+      messageDiv.classList.remove('hidden');
+
+      setTimeout(() => {
+        messageDiv.classList.add('hidden');
+      }, 3000);
+    }
+
+    // Event listeners
+    document.getElementById('categoryFilter').addEventListener('change', (e) => {
+      loadMovies(e.target.value);
+    });
+
+    document.getElementById('searchBtn').addEventListener('click', searchMovies);
+
+    document.getElementById('searchInput').addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        searchMovies();
+      }
+    });
+
+    document.getElementById('refreshBtn').addEventListener('click', () => {
+      loadMovies(document.getElementById('categoryFilter').value);
+    });
+
+    // Close modal on background click
+    document.getElementById('movieModal').addEventListener('click', (e) => {
+      if (e.target.id === 'movieModal') {
+        hideMovieModal();
+      }
+    });
+
+    // Add event listeners for watchlist buttons
+    document.addEventListener('click', (e) => {
+      // Handle movie card clicks for navigation to details page
+      if (e.target.closest('[data-navigate-to-movie]')) {
+        const movieCard = e.target.closest('[data-navigate-to-movie]');
+        const movieId = movieCard.dataset.movieId;
+        window.location.href = `/movie/${movieId}`;
+      }
+
+      // Handle add to watchlist buttons in grid
+      if (e.target.matches('[data-add-to-watchlist]')) {
+        e.stopPropagation();
+        const movieId = e.target.dataset.movieId;
+        const movieTitle = e.target.dataset.movieTitle;
+        addToWatchlist(movieId, movieTitle);
+      }
+
+      // Handle add to watchlist buttons in modal
+      if (e.target.matches('[data-modal-add-to-watchlist]')) {
+        const movieId = e.target.dataset.movieId;
+        const movieTitle = e.target.dataset.movieTitle;
+        addToWatchlist(movieId, movieTitle);
+        hideMovieModal();
+      }
+
+      // Handle close modal buttons
+      if (e.target.matches('[data-close-modal]')) {
+        hideMovieModal();
+      }
+    });
+
+    // Initial load
+    loadMovies();
+  </script>
+</Layout>

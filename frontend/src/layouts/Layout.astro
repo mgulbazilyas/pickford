@@ -1,0 +1,106 @@
+---
+interface Props {
+  title: string;
+}
+
+const { title } = Astro.props;
+---
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{title} - Pickford</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body {
+      background-color: #f3f4f6;
+    }
+  </style>
+</head>
+<body class="min-h-screen bg-gray-50">
+  <!-- Navigation -->
+  <nav class="bg-white shadow-sm border-b">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex justify-between h-16">
+        <div class="flex items-center">
+          <a href="/" class="flex items-center space-x-2">
+            <span class="text-2xl">🎬</span>
+            <span class="text-xl font-bold text-gray-900">Pickford</span>
+          </a>
+        </div>
+
+        <div class="flex items-center space-x-4">
+          <a href="/dashboard" class="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">
+            Dashboard
+          </a>
+          <a href="/movies" class="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">
+            Movies
+          </a>
+          <div id="authLinks" class="flex items-center space-x-4">
+            <a href="/login" class="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">
+              Login
+            </a>
+            <a href="/register" class="bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-blue-700">
+              Register
+            </a>
+          </div>
+          <div id="userMenu" class="hidden items-center space-x-4">
+            <a href="/watchlist" class="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">
+              My Watchlist
+            </a>
+            <button id="logoutBtn" class="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">
+              Logout
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main Content -->
+  <main>
+    <slot />
+  </main>
+
+  <!-- Footer -->
+  <footer class="bg-white border-t mt-16">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div class="text-center">
+        <p class="text-gray-600 text-sm">
+          © 2024 Pickford. Built with Astro and powered by Trakt API.
+        </p>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    function updateAuthUI() {
+      const token = localStorage.getItem('authToken');
+      const authLinks = document.getElementById('authLinks');
+      const userMenu = document.getElementById('userMenu');
+
+      if (token) {
+        authLinks.style.display = 'none';
+        userMenu.style.display = 'flex';
+      } else {
+        authLinks.style.display = 'flex';
+        userMenu.style.display = 'none';
+      }
+    }
+
+    document.getElementById('logoutBtn')?.addEventListener('click', () => {
+      localStorage.removeItem('authToken');
+      updateAuthUI();
+      window.location.href = '/';
+    });
+
+    // Update UI on page load
+    updateAuthUI();
+
+    // Listen for storage changes (for cross-tab updates)
+    window.addEventListener('storage', updateAuthUI);
+  </script>
+</body>
+</html>

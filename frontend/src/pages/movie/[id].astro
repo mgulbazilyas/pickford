@@ -1,0 +1,843 @@
+---
+import Layout from '../../layouts/Layout.astro';
+
+const { id } = Astro.params;
+---
+
+<Layout title={`Movie Details - ${id}`}>
+  <div class="max-w-7xl mx-auto px-4 py-8 movie-id" data-movie-id={id}>
+    <!-- Back Navigation -->
+    <div class="mb-6">
+      <a href="/movies" class="inline-flex items-center text-blue-600 hover:text-blue-800 transition-colors">
+        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
+        </svg>
+        Back to Movies
+      </a>
+    </div>
+
+    <!-- Loading State -->
+    <div id="loadingState" class="text-center py-12">
+      <div class="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
+      <p class="text-gray-600">Loading movie details...</p>
+    </div>
+
+    <!-- Error State -->
+    <div id="errorState" class="hidden text-center py-12">
+      <div class="text-gray-400 text-6xl mb-4">❌</div>
+      <h3 class="text-xl font-semibold text-gray-600 mb-2">Failed to load movie</h3>
+      <p class="text-gray-500 mb-4">Please try again later</p>
+      <button data-retry-movie class="bg-blue-600 text-white px-6 py-2 rounded-md hover:bg-blue-700 transition-colors">
+        Retry
+      </button>
+    </div>
+
+    <!-- Movie Content -->
+    <div id="movieContent" class="hidden">
+      <!-- Movie Header Section -->
+      <div class="bg-gradient-to-r from-gray-900 to-gray-700 rounded-lg p-8 mb-8 text-white">
+        <div class="flex flex-col lg:flex-row gap-8">
+          <!-- Movie Poster -->
+          <div class="flex-shrink-0">
+            <div id="moviePoster" class="w-64 h-96 bg-gray-800 rounded-lg shadow-lg flex items-center justify-center">
+              <div class="text-gray-400 text-6xl">🎬</div>
+            </div>
+          </div>
+
+          <!-- Movie Info -->
+          <div class="flex-1">
+            <h1 id="movieTitle" class="text-4xl font-bold mb-4">Loading...</h1>
+
+            <div class="flex flex-wrap gap-4 mb-6">
+              <span id="movieYear" class="bg-blue-600 px-3 py-1 rounded-full text-sm">Year</span>
+              <span id="movieRating" class="bg-yellow-600 px-3 py-1 rounded-full text-sm">⭐ Rating</span>
+              <span id="movieRuntime" class="bg-green-600 px-3 py-1 rounded-full text-sm">⏱️ Runtime</span>
+            </div>
+
+            <div id="movieGenres" class="flex flex-wrap gap-2 mb-6">
+              <!-- Genres will be populated here -->
+            </div>
+
+            <p id="movieOverview" class="text-gray-300 text-lg leading-relaxed mb-8">
+              Loading overview...
+            </p>
+
+            <!-- Action Buttons -->
+            <div class="flex flex-wrap gap-4">
+              <button id="addToWatchlistBtn" data-add-to-watchlist
+                      class="bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-lg font-semibold transition-colors flex items-center gap-2">
+                <span>❤️</span>
+                <span>Add to Watchlist</span>
+              </button>
+
+              <button id="showCommentsBtn" data-scroll-to-comments
+                      class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-semibold transition-colors flex items-center gap-2">
+                <span>💬</span>
+                <span>View Comments</span>
+              </button>
+
+              <button id="showReviewsBtn" data-scroll-to-reviews
+                      class="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-lg font-semibold transition-colors flex items-center gap-2">
+                <span>⭐</span>
+                <span>View Reviews</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tabs Section -->
+      <div class="bg-white rounded-lg shadow-md mb-8">
+        <div class="border-b">
+          <nav class="flex -mb-px">
+            <button data-tab="overview" class="tab-button active px-6 py-3 border-b-2 border-blue-600 text-blue-600 font-medium">
+              Overview
+            </button>
+            <button data-tab="comments" class="tab-button px-6 py-3 border-b-2 border-transparent text-gray-500 hover:text-gray-700 font-medium">
+              Comments (<span id="commentsCount">0</span>)
+            </button>
+            <button data-tab="reviews" class="tab-button px-6 py-3 border-b-2 border-transparent text-gray-500 hover:text-gray-700 font-medium">
+              Reviews (<span id="reviewsCount">0</span>)
+            </button>
+            <button data-tab="similar" class="tab-button px-6 py-3 border-b-2 border-transparent text-gray-500 hover:text-gray-700 font-medium">
+              Similar Movies
+            </button>
+          </nav>
+        </div>
+
+        <!-- Tab Content -->
+        <div class="p-6">
+          <!-- Overview Tab -->
+          <div id="overview-tab" class="tab-content">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+              <div>
+                <h3 class="text-xl font-semibold mb-4">Details</h3>
+                <div class="space-y-3">
+                  <div class="flex justify-between">
+                    <span class="text-gray-600">Release Date:</span>
+                    <span id="movieReleaseDate" class="font-medium">-</span>
+                  </div>
+                  <div class="flex justify-between">
+                    <span class="text-gray-600">Language:</span>
+                    <span id="movieLanguage" class="font-medium">-</span>
+                  </div>
+                  <div class="flex justify-between">
+                    <span class="text-gray-600">Country:</span>
+                    <span id="movieCountry" class="font-medium">-</span>
+                  </div>
+                  <div class="flex justify-between">
+                    <span class="text-gray-600">Budget:</span>
+                    <span id="movieBudget" class="font-medium">-</span>
+                  </div>
+                  <div class="flex justify-between">
+                    <span class="text-gray-600">Revenue:</span>
+                    <span id="movieRevenue" class="font-medium">-</span>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <h3 class="text-xl font-semibold mb-4">Statistics</h3>
+                <div class="space-y-3">
+                  <div class="flex justify-between">
+                    <span class="text-gray-600">Popularity:</span>
+                    <span id="moviePopularity" class="font-medium">-</span>
+                  </div>
+                  <div class="flex justify-between">
+                    <span class="text-gray-600">Vote Count:</span>
+                    <span id="movieVoteCount" class="font-medium">-</span>
+                  </div>
+                  <div class="flex justify-between">
+                    <span class="text-gray-600">Vote Average:</span>
+                    <span id="movieVoteAverage" class="font-medium">-</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Comments Tab -->
+          <div id="comments-tab" class="tab-content hidden">
+            <!-- Add Comment Form -->
+            <div class="mb-8 p-6 bg-gray-50 rounded-lg">
+              <h3 class="text-xl font-semibold mb-4">Add a Comment</h3>
+              <form id="commentForm" class="space-y-4">
+                <div>
+                  <textarea
+                    id="commentText"
+                    rows="4"
+                    placeholder="Share your thoughts about this movie..."
+                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    required
+                  ></textarea>
+                </div>
+                <div class="flex justify-end">
+                  <button type="submit" class="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors">
+                    Post Comment
+                  </button>
+                </div>
+              </form>
+            </div>
+
+            <!-- Comments List -->
+            <div id="commentsList" class="space-y-4">
+              <!-- Comments will be populated here -->
+            </div>
+
+            <!-- Empty State -->
+            <div id="noComments" class="text-center py-8 text-gray-500">
+              <p>No comments yet. Be the first to comment!</p>
+            </div>
+          </div>
+
+          <!-- Reviews Tab -->
+          <div id="reviews-tab" class="tab-content hidden">
+            <!-- Add Review Form -->
+            <div class="mb-8 p-6 bg-gray-50 rounded-lg">
+              <h3 class="text-xl font-semibold mb-4">Write a Review</h3>
+              <form id="reviewForm" class="space-y-4">
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-2">Rating</label>
+                  <div class="flex gap-1" id="ratingContainer">
+                    <button type="button" data-rating="1" class="rating-star text-3xl text-gray-300 focus:outline-none cursor-pointer transition-colors">⭐</button>
+                    <button type="button" data-rating="2" class="rating-star text-3xl text-gray-300 focus:outline-none cursor-pointer transition-colors">⭐</button>
+                    <button type="button" data-rating="3" class="rating-star text-3xl text-gray-300 focus:outline-none cursor-pointer transition-colors">⭐</button>
+                    <button type="button" data-rating="4" class="rating-star text-3xl text-gray-300 focus:outline-none cursor-pointer transition-colors">⭐</button>
+                    <button type="button" data-rating="5" class="rating-star text-3xl text-gray-300 focus:outline-none cursor-pointer transition-colors">⭐</button>
+                  </div>
+                  <input type="hidden" id="reviewRating" name="rating" value="0">
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-2">Review Title</label>
+                  <input
+                    type="text"
+                    id="reviewTitle"
+                    placeholder="Give your review a title..."
+                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    required
+                  />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-2">Review</label>
+                  <textarea
+                    id="reviewText"
+                    rows="6"
+                    placeholder="Share your detailed review of this movie..."
+                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    required
+                  ></textarea>
+                </div>
+                <div class="flex justify-end">
+                  <button type="submit" class="bg-purple-600 text-white px-6 py-2 rounded-lg hover:bg-purple-700 transition-colors">
+                    Submit Review
+                  </button>
+                </div>
+              </form>
+            </div>
+
+            <!-- Reviews List -->
+            <div id="reviewsList" class="space-y-6">
+              <!-- Reviews will be populated here -->
+            </div>
+
+            <!-- Empty State -->
+            <div id="noReviews" class="text-center py-8 text-gray-500">
+              <p>No reviews yet. Be the first to review!</p>
+            </div>
+          </div>
+
+          <!-- Similar Movies Tab -->
+          <div id="similar-tab" class="tab-content hidden">
+            <div id="similarMovies" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              <!-- Similar movies will be populated here -->
+            </div>
+            <div id="noSimilarMovies" class="text-center py-8 text-gray-500 hidden">
+              <p>No similar movies found.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Message Toast -->
+  <div id="messageToast" class="fixed top-4 right-4 p-4 rounded-lg shadow-lg hidden z-50">
+    <div class="flex items-center justify-between">
+      <span id="messageText"></span>
+      <button data-hide-message class="ml-4 text-white hover:text-gray-200">✕</button>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = 'http://localhost:3000/api';
+    const movieId = document.querySelector('[data-movie-id]').dataset.movieId;
+    let authToken = localStorage.getItem('authToken');
+    let movieData = null;
+
+    // Initialize page
+    document.addEventListener('DOMContentLoaded', async () => {
+      await loadMovieDetails();
+      await loadComments();
+      await loadReviews();
+      await loadSimilarMovies();
+      setupEventListeners();
+    });
+
+    async function loadMovieDetails() {
+      const loadingState = document.getElementById('loadingState');
+      const errorState = document.getElementById('errorState');
+      const movieContent = document.getElementById('movieContent');
+
+      try {
+        loadingState.classList.remove('hidden');
+        errorState.classList.add('hidden');
+
+        const response = await fetch(`${API_BASE}/trakt-new/movies/${movieId}?extended=full`);
+
+        if (response.ok) {
+          movieData = await response.json();
+          displayMovieDetails(movieData);
+          movieContent.classList.remove('hidden');
+        } else {
+          throw new Error('Failed to load movie details');
+        }
+      } catch (error) {
+        console.error('Error loading movie details:', error);
+        errorState.classList.remove('hidden');
+      } finally {
+        loadingState.classList.add('hidden');
+      }
+    }
+
+    function displayMovieDetails(movie) {
+      // Basic info
+      document.getElementById('movieTitle').textContent = movie.title || movie.movie?.title || 'Unknown Title';
+      document.getElementById('movieYear').textContent = movie.year || 'N/A';
+      document.getElementById('movieRating').textContent = movie.rating ? `⭐ ${movie.rating}` : '⭐ N/A';
+      document.getElementById('movieRuntime').textContent = movie.runtime ? `⏱️ ${movie.runtime} min` : '⏱️ N/A';
+      document.getElementById('movieOverview').textContent = movie.overview || movie.plot || 'No overview available.';
+
+      // Poster
+      const posterContainer = document.getElementById('moviePoster');
+      if (movie.poster) {
+        posterContainer.innerHTML = `<img src="${movie.poster}" alt="${movie.title}" class="w-full h-full object-cover rounded-lg">`;
+      }
+
+      // Genres
+      const genresContainer = document.getElementById('movieGenres');
+      if (movie.genres && movie.genres.length > 0) {
+        genresContainer.innerHTML = movie.genres.map(genre =>
+          `<span class="bg-gray-600 px-3 py-1 rounded-full text-sm">${genre}</span>`
+        ).join('');
+      }
+
+      // Additional details
+      document.getElementById('movieReleaseDate').textContent = movie.released || 'N/A';
+      document.getElementById('movieLanguage').textContent = movie.language || 'N/A';
+      document.getElementById('movieCountry').textContent = movie.country || 'N/A';
+      document.getElementById('movieBudget').textContent = movie.budget ? `$${movie.budget.toLocaleString()}` : 'N/A';
+      document.getElementById('movieRevenue').textContent = movie.revenue ? `$${movie.revenue.toLocaleString()}` : 'N/A';
+
+      // Statistics
+      document.getElementById('moviePopularity').textContent = movie.popularity || 'N/A';
+      document.getElementById('movieVoteCount').textContent = movie.votes || 'N/A';
+      document.getElementById('movieVoteAverage').textContent = movie.rating || 'N/A';
+
+      // Update watchlist button if user is logged in
+      if (authToken) {
+        checkIfInWatchlist();
+      }
+    }
+
+    async function checkIfInWatchlist() {
+      try {
+        const response = await fetch(`${API_BASE}/watchlist?includeDetails=true`, {
+          headers: {
+            'Authorization': `Bearer ${authToken}`
+          }
+        });
+
+        if (response.ok) {
+          const watchlist = await response.json();
+          const isInWatchlist = watchlist.some(item => item.movieId === movieId);
+          updateWatchlistButton(isInWatchlist);
+        }
+      } catch (error) {
+        console.error('Error checking watchlist:', error);
+      }
+    }
+
+    function updateWatchlistButton(isInWatchlist) {
+      const button = document.getElementById('addToWatchlistBtn');
+      if (isInWatchlist) {
+        button.innerHTML = '<span>💔</span><span>Remove from Watchlist</span>';
+        button.classList.remove('bg-red-600', 'hover:bg-red-700');
+        button.classList.add('bg-gray-600', 'hover:bg-gray-700');
+      } else {
+        button.innerHTML = '<span>❤️</span><span>Add to Watchlist</span>';
+        button.classList.remove('bg-gray-600', 'hover:bg-gray-700');
+        button.classList.add('bg-red-600', 'hover:bg-red-700');
+      }
+    }
+
+    async function toggleWatchlist() {
+      if (!authToken) {
+        showMessage('Please login to manage watchlist', 'error');
+        return;
+      }
+
+      try {
+        const response = await fetch(`${API_BASE}/watchlist`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${authToken}`
+          },
+          body: JSON.stringify({
+            movieId: movieId,
+            notes: `Added from movie details: ${movieData?.title || 'Unknown Movie'}`,
+            priority: 'medium'
+          })
+        });
+
+        if (response.ok) {
+          const isInWatchlist = await checkIfInWatchlist();
+          updateWatchlistButton(!isInWatchlist);
+          showMessage('Watchlist updated successfully', 'success');
+        } else {
+          showMessage('Failed to update watchlist', 'error');
+        }
+      } catch (error) {
+        showMessage('Network error', 'error');
+      }
+    }
+
+    async function loadComments() {
+      try {
+        const response = await fetch(`${API_BASE}/comments?movieId=${movieId}`);
+
+        if (response.ok) {
+          const data = await response.json();
+          displayComments(data.comments || []);
+          document.getElementById('commentsCount').textContent = data.comments?.length || '0';
+        } else {
+          document.getElementById('commentsCount').textContent = '0';
+          document.getElementById('noComments').classList.remove('hidden');
+        }
+      } catch (error) {
+        console.error('Error loading comments:', error);
+        document.getElementById('commentsCount').textContent = '0';
+        document.getElementById('noComments').classList.remove('hidden');
+      }
+    }
+
+    async function loadReviews() {
+      try {
+        const response = await fetch(`${API_BASE}/ratings?movieId=${movieId}`);
+
+        if (response.ok) {
+          const data = await response.json();
+          displayReviews(data.ratings || []);
+          document.getElementById('reviewsCount').textContent = data.ratings?.length || '0';
+        } else {
+          document.getElementById('reviewsCount').textContent = '0';
+          document.getElementById('noReviews').classList.remove('hidden');
+        }
+      } catch (error) {
+        console.error('Error loading reviews:', error);
+        document.getElementById('reviewsCount').textContent = '0';
+        document.getElementById('noReviews').classList.remove('hidden');
+      }
+    }
+
+    async function loadSimilarMovies() {
+      try {
+        const response = await fetch(`${API_BASE}/trakt-new/movies/${movieId}/related?limit=8`);
+
+        if (response.ok) {
+          const similarMovies = await response.json();
+          displaySimilarMovies(similarMovies);
+        } else {
+          document.getElementById('noSimilarMovies').classList.remove('hidden');
+        }
+      } catch (error) {
+        console.error('Error loading similar movies:', error);
+        document.getElementById('noSimilarMovies').classList.remove('hidden');
+      }
+    }
+
+    function displaySimilarMovies(movies) {
+      const container = document.getElementById('similarMovies');
+      const noSimilar = document.getElementById('noSimilarMovies');
+
+      if (!movies || movies.length === 0) {
+        noSimilar.classList.remove('hidden');
+        return;
+      }
+
+      noSimilar.classList.add('hidden');
+      container.innerHTML = movies.map(movie => `
+        <div class="bg-gray-50 rounded-lg overflow-hidden hover:shadow-md transition-shadow cursor-pointer"
+             onclick="window.location.href='/movie/${movie.id || movie.ids?.trakt}'">
+          <div class="aspect-[2/3] bg-gray-200 relative">
+            ${movie.poster ?
+              `<img src="${movie.poster}" alt="${movie.title}" class="w-full h-full object-cover">` :
+              `<div class="w-full h-full flex items-center justify-center text-gray-400 text-4xl">🎬</div>`
+            }
+            ${movie.rating ? `<div class="absolute top-2 right-2 bg-yellow-500 text-black px-2 py-1 rounded text-xs font-bold">⭐ ${movie.rating}</div>` : ''}
+          </div>
+          <div class="p-3">
+            <h4 class="font-semibold text-sm mb-1 truncate">${movie.title || movie.movie?.title}</h4>
+            <p class="text-xs text-gray-600">${movie.year || movie.movie?.year || 'N/A'}</p>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function displayComments(comments) {
+      const container = document.getElementById('commentsList');
+      const noComments = document.getElementById('noComments');
+
+      if (!comments || comments.length === 0) {
+        container.innerHTML = '';
+        noComments.classList.remove('hidden');
+        return;
+      }
+
+      noComments.classList.add('hidden');
+      container.innerHTML = comments.map(comment => `
+        <div class="bg-gray-50 rounded-lg p-4">
+          <div class="flex items-start justify-between mb-3">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 bg-gray-300 rounded-full flex items-center justify-center">
+                ${comment.user?.avatar ?
+                  `<img src="${comment.user.avatar}" alt="${comment.user?.username || 'User'}" class="w-full h-full object-cover rounded-full">` :
+                  `<span class="text-gray-600 text-sm">${comment.user?.username?.[0] || 'U'}</span>`
+                }
+              </div>
+              <div>
+                <h4 class="font-semibold">${comment.user?.username || 'Anonymous'}</h4>
+                <p class="text-sm text-gray-500">${new Date(comment.createdAt).toLocaleDateString()}</p>
+              </div>
+            </div>
+            ${comment.isSpoiler ? `<span class="bg-red-100 text-red-800 text-xs px-2 py-1 rounded">Spoiler</span>` : ''}
+          </div>
+          <p class="text-gray-700">${comment.content}</p>
+          <div class="flex items-center gap-4 mt-3">
+            <button data-like-comment data-comment-id="${comment._id}" class="flex items-center gap-1 text-sm text-gray-500 hover:text-blue-600">
+              <span>👍</span>
+              <span>${comment.likes || 0}</span>
+            </button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function displayReviews(reviews) {
+      const container = document.getElementById('reviewsList');
+      const noReviews = document.getElementById('noReviews');
+
+      if (!reviews || reviews.length === 0) {
+        container.innerHTML = '';
+        noReviews.classList.remove('hidden');
+        return;
+      }
+
+      noReviews.classList.add('hidden');
+      container.innerHTML = reviews.map(review => `
+        <div class="bg-gray-50 rounded-lg p-6">
+          <div class="flex items-start justify-between mb-4">
+            <div class="flex items-center gap-3">
+              <div class="w-12 h-12 bg-gray-300 rounded-full flex items-center justify-center">
+                ${review.user?.avatar ?
+                  `<img src="${review.user.avatar}" alt="${review.user?.username || 'User'}" class="w-full h-full object-cover rounded-full">` :
+                  `<span class="text-gray-600 text-sm">${review.user?.username?.[0] || 'U'}</span>`
+                }
+              </div>
+              <div>
+                <h4 class="font-semibold">${review.user?.username || 'Anonymous'}</h4>
+                <div class="flex items-center gap-2">
+                  <div class="flex text-yellow-500">
+                    ${Array.from({length: 5}, (_, i) =>
+                      `<span class="text-sm">${i < Math.floor(review.rating / 2) ? '⭐' : '☆'}</span>`
+                    ).join('')}
+                  </div>
+                  <span class="text-sm text-gray-500">${review.rating}/10</span>
+                </div>
+                <p class="text-sm text-gray-500">${new Date(review.createdAt).toLocaleDateString()}</p>
+              </div>
+            </div>
+          </div>
+          ${review.review ? `<p class="text-gray-700 mb-4">${review.review}</p>` : ''}
+        </div>
+      `).join('');
+    }
+
+    function setupEventListeners() {
+      // Tab switching
+      document.querySelectorAll('.tab-button').forEach(button => {
+        button.addEventListener('click', () => {
+          const tabName = button.dataset.tab;
+          switchTab(tabName);
+        });
+      });
+
+      // Scroll to sections
+      document.querySelector('[data-scroll-to-comments]')?.addEventListener('click', () => {
+        switchTab('comments');
+      });
+
+      document.querySelector('[data-scroll-to-reviews]')?.addEventListener('click', () => {
+        switchTab('reviews');
+      });
+
+      // Rating stars
+      const ratingContainer = document.getElementById('ratingContainer');
+      const ratingStars = ratingContainer.querySelectorAll('.rating-star');
+
+      ratingStars.forEach(star => {
+        // Click to set rating
+        star.addEventListener('click', () => {
+          const rating = parseInt(star.dataset.rating);
+          setRating(rating);
+        });
+
+        // Hover effects
+        star.addEventListener('mouseenter', () => {
+          const hoverRating = parseInt(star.dataset.rating);
+          ratingStars.forEach(s => {
+            const starRating = parseInt(s.dataset.rating);
+            if (starRating <= hoverRating) {
+              s.classList.remove('text-gray-300');
+              s.classList.add('text-yellow-400');
+            } else {
+              s.classList.remove('text-yellow-400');
+              s.classList.add('text-gray-300');
+            }
+          });
+        });
+      });
+
+      // Reset hover effect when leaving the rating container
+      ratingContainer.addEventListener('mouseleave', () => {
+        const currentRating = parseInt(document.getElementById('reviewRating').value) || 0;
+        setRating(currentRating);
+      });
+
+      // Event delegation for data attributes
+      document.addEventListener('click', (e) => {
+        if (e.target.matches('[data-add-to-watchlist]') || e.target.closest('[data-add-to-watchlist]')) {
+          toggleWatchlist();
+        }
+
+        if (e.target.matches('[data-retry-movie]')) {
+          loadMovieDetails();
+        }
+
+        if (e.target.matches('[data-hide-message]')) {
+          hideMessage();
+        }
+
+        if (e.target.matches('[data-like-comment]') || e.target.closest('[data-like-comment]')) {
+          const button = e.target.matches('[data-like-comment]') ? e.target : e.target.closest('[data-like-comment]');
+          const commentId = button.dataset.commentId;
+          likeComment(commentId);
+        }
+      });
+
+      // Form submissions
+      document.getElementById('commentForm')?.addEventListener('submit', handleCommentSubmit);
+      document.getElementById('reviewForm')?.addEventListener('submit', handleReviewSubmit);
+    }
+
+    function switchTab(tabName) {
+      // Update tab buttons
+      document.querySelectorAll('.tab-button').forEach(button => {
+        if (button.dataset.tab === tabName) {
+          button.classList.add('active', 'border-blue-600', 'text-blue-600');
+          button.classList.remove('border-transparent', 'text-gray-500');
+        } else {
+          button.classList.remove('active', 'border-blue-600', 'text-blue-600');
+          button.classList.add('border-transparent', 'text-gray-500');
+        }
+      });
+
+      // Update tab content
+      document.querySelectorAll('.tab-content').forEach(content => {
+        content.classList.add('hidden');
+      });
+      document.getElementById(`${tabName}-tab`).classList.remove('hidden');
+    }
+
+    function setRating(rating) {
+      // Store the current rating
+      document.getElementById('reviewRating').value = rating;
+
+      // Update all stars based on the rating
+      const ratingStars = document.querySelectorAll('#ratingContainer .rating-star');
+      ratingStars.forEach(star => {
+        const starRating = parseInt(star.dataset.rating);
+        if (starRating <= rating) {
+          star.classList.remove('text-gray-300', 'text-yellow-400');
+          star.classList.add('text-yellow-500');
+        } else {
+          star.classList.remove('text-yellow-500', 'text-yellow-400');
+          star.classList.add('text-gray-300');
+        }
+      });
+    }
+
+    async function handleCommentSubmit(e) {
+      e.preventDefault();
+
+      if (!authToken) {
+        showMessage('Please login to post comments', 'error');
+        return;
+      }
+
+      const commentText = document.getElementById('commentText').value.trim();
+
+      try {
+        const response = await fetch(`${API_BASE}/comments`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${authToken}`
+          },
+          body: JSON.stringify({
+            movieId: movieId,
+            content: commentText,
+            isSpoiler: false
+          })
+        });
+
+        if (response.ok) {
+          showMessage('Comment posted successfully!', 'success');
+          document.getElementById('commentForm').reset();
+          await loadComments(); // Refresh comments
+        } else {
+          const error = await response.json();
+          showMessage(error.message || 'Failed to post comment', 'error');
+        }
+      } catch (error) {
+        showMessage('Network error', 'error');
+      }
+    }
+
+    async function handleReviewSubmit(e) {
+      e.preventDefault();
+
+      if (!authToken) {
+        showMessage('Please login to post reviews', 'error');
+        return;
+      }
+
+      const rating = parseInt(document.getElementById('reviewRating').value) * 2; // Convert 1-5 to 1-10 scale
+      const title = document.getElementById('reviewTitle').value.trim();
+      const text = document.getElementById('reviewText').value.trim();
+
+      if (rating === 0) {
+        showMessage('Please select a rating', 'error');
+        return;
+      }
+
+      try {
+        const response = await fetch(`${API_BASE}/ratings`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${authToken}`
+          },
+          body: JSON.stringify({
+            movieId: movieId,
+            rating: rating,
+            review: text
+          })
+        });
+
+        if (response.ok) {
+          showMessage('Review posted successfully!', 'success');
+          document.getElementById('reviewForm').reset();
+          setRating(0);
+          await loadReviews(); // Refresh reviews
+        } else {
+          const error = await response.json();
+          showMessage(error.message || 'Failed to post review', 'error');
+        }
+      } catch (error) {
+        showMessage('Network error', 'error');
+      }
+    }
+
+    function showMessage(text, type = 'info') {
+      const toast = document.getElementById('messageToast');
+      const messageText = document.getElementById('messageText');
+
+      messageText.textContent = text;
+
+      // Set background color based on type
+      toast.className = `fixed top-4 right-4 p-4 rounded-lg shadow-lg z-50 ${
+        type === 'success' ? 'bg-green-500 text-white' :
+        type === 'error' ? 'bg-red-500 text-white' :
+        type === 'info' ? 'bg-blue-500 text-white' :
+        'bg-gray-500 text-white'
+      }`;
+
+      toast.classList.remove('hidden');
+
+      setTimeout(() => {
+        hideMessage();
+      }, 5000);
+    }
+
+    function hideMessage() {
+      document.getElementById('messageToast').classList.add('hidden');
+    }
+
+    async function likeComment(commentId) {
+      if (!authToken) {
+        showMessage('Please login to like comments', 'error');
+        return;
+      }
+
+      try {
+        const response = await fetch(`${API_BASE}/comments`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${authToken}`
+          },
+          body: JSON.stringify({
+            commentId: commentId,
+            action: 'like'
+          })
+        });
+
+        if (response.ok) {
+          await loadComments(); // Refresh comments to update like count
+        } else {
+          const error = await response.json();
+          showMessage(error.message || 'Failed to like comment', 'error');
+        }
+      } catch (error) {
+        showMessage('Network error', 'error');
+      }
+    }
+  </script>
+
+  <style>
+    .tab-content {
+      animation: fadeIn 0.3s ease-in-out;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .rating-star:hover {
+      transform: scale(1.1);
+      transition: transform 0.2s;
+    }
+  </style>
+</Layout>

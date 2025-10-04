@@ -1,0 +1,484 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+
+<Layout title="Pickford - Stream Movies & TV Shows">
+  <!-- Hero Section -->
+  <section class="relative h-screen flex items-center justify-center overflow-hidden">
+    <div id="heroBackground" class="absolute inset-0 bg-gradient-to-b from-transparent via-black/50 to-black"></div>
+
+    <div class="relative z-10 text-center px-4 max-w-4xl mx-auto">
+      <h1 class="text-5xl md:text-7xl font-bold text-white mb-6">
+        Unlimited Movies, TV Shows & More
+      </h1>
+      <p class="text-xl md:text-2xl text-gray-200 mb-8">
+        Watch anywhere. Cancel anytime.
+      </p>
+
+      <div class="flex flex-col sm:flex-row gap-4 justify-center">
+        <a href="/register" class="bg-red-600 hover:bg-red-700 text-white px-8 py-3 rounded-lg text-lg font-semibold transition-colors">
+          Get Started
+        </a>
+        <a href="/movies" class="bg-white/10 hover:bg-white/20 text-white px-8 py-3 rounded-lg text-lg font-semibold transition-colors border border-white/20">
+          Browse Movies
+        </a>
+      </div>
+    </div>
+
+    <div id="heroMovieInfo" class="absolute bottom-10 left-10 text-white hidden">
+      <h2 class="text-2xl font-bold mb-2"></h2>
+      <p class="text-lg mb-4"></p>
+      <div class="flex gap-4">
+        <button class="bg-white text-black px-6 py-2 rounded-lg font-semibold hover:bg-gray-200 transition-colors">
+          ▶️ Play
+        </button>
+        <button class="bg-white/20 text-white px-6 py-2 rounded-lg font-semibold hover:bg-white/30 transition-colors">
+          ℹ️ More Info
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Content Rows -->
+  <div class="bg-black text-white">
+    <!-- Trending Movies -->
+    <section class="py-8 px-4">
+      <div class="max-w-7xl mx-auto">
+        <h2 class="text-2xl font-bold mb-4">🔥 Trending Movies</h2>
+        <div class="relative">
+          <div id="trendingMoviesRow" class="flex gap-4 overflow-x-auto scrollbar-hide pb-4">
+            <div class="flex gap-4">
+              <!-- Movies will be populated here -->
+            </div>
+          </div>
+          <button class="scroll-btn left-0 top-1/2 -translate-y-1/2 absolute bg-black/50 hover:bg-black/70 text-white p-2 rounded-r-lg" onclick="scrollRow('trendingMoviesRow', -1)">
+            ‹
+          </button>
+          <button class="scroll-btn right-0 top-1/2 -translate-y-1/2 absolute bg-black/50 hover:bg-black/70 text-white p-2 rounded-l-lg" onclick="scrollRow('trendingMoviesRow', 1)">
+            ›
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Popular Movies -->
+    <section class="py-8 px-4">
+      <div class="max-w-7xl mx-auto">
+        <h2 class="text-2xl font-bold mb-4">🎬 Popular Movies</h2>
+        <div class="relative">
+          <div id="popularMoviesRow" class="flex gap-4 overflow-x-auto scrollbar-hide pb-4">
+            <div class="flex gap-4">
+              <!-- Movies will be populated here -->
+            </div>
+          </div>
+          <button class="scroll-btn left-0 top-1/2 -translate-y-1/2 absolute bg-black/50 hover:bg-black/70 text-white p-2 rounded-r-lg" onclick="scrollRow('popularMoviesRow', -1)">
+            ‹
+          </button>
+          <button class="scroll-btn right-0 top-1/2 -translate-y-1/2 absolute bg-black/50 hover:bg-black/70 text-white p-2 rounded-l-lg" onclick="scrollRow('popularMoviesRow', 1)">
+            ›
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Trending TV Shows -->
+    <section class="py-8 px-4">
+      <div class="max-w-7xl mx-auto">
+        <h2 class="text-2xl font-bold mb-4">📺 Trending TV Shows</h2>
+        <div class="relative">
+          <div id="trendingShowsRow" class="flex gap-4 overflow-x-auto scrollbar-hide pb-4">
+            <div class="flex gap-4">
+              <!-- Shows will be populated here -->
+            </div>
+          </div>
+          <button class="scroll-btn left-0 top-1/2 -translate-y-1/2 absolute bg-black/50 hover:bg-black/70 text-white p-2 rounded-r-lg" onclick="scrollRow('trendingShowsRow', -1)">
+            ‹
+          </button>
+          <button class="scroll-btn right-0 top-1/2 -translate-y-1/2 absolute bg-black/50 hover:bg-black/70 text-white p-2 rounded-l-lg" onclick="scrollRow('trendingShowsRow', 1)">
+            ›
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Popular TV Shows -->
+    <section class="py-8 px-4">
+      <div class="max-w-7xl mx-auto">
+        <h2 class="text-2xl font-bold mb-4">🍿 Popular TV Shows</h2>
+        <div class="relative">
+          <div id="popularShowsRow" class="flex gap-4 overflow-x-auto scrollbar-hide pb-4">
+            <div class="flex gap-4">
+              <!-- Shows will be populated here -->
+            </div>
+          </div>
+          <button class="scroll-btn left-0 top-1/2 -translate-y-1/2 absolute bg-black/50 hover:bg-black/70 text-white p-2 rounded-r-lg" onclick="scrollRow('popularShowsRow', -1)">
+            ‹
+          </button>
+          <button class="scroll-btn right-0 top-1/2 -translate-y-1/2 absolute bg-black/50 hover:bg-black/70 text-white p-2 rounded-l-lg" onclick="scrollRow('popularShowsRow', 1)">
+            ›
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Box Office Movies -->
+    <section class="py-8 px-4">
+      <div class="max-w-7xl mx-auto">
+        <h2 class="text-2xl font-bold mb-4">💰 Box Office Movies</h2>
+        <div class="relative">
+          <div id="boxOfficeRow" class="flex gap-4 overflow-x-auto scrollbar-hide pb-4">
+            <div class="flex gap-4">
+              <!-- Movies will be populated here -->
+            </div>
+          </div>
+          <button class="scroll-btn left-0 top-1/2 -translate-y-1/2 absolute bg-black/50 hover:bg-black/70 text-white p-2 rounded-r-lg" onclick="scrollRow('boxOfficeRow', -1)">
+            ‹
+          </button>
+          <button class="scroll-btn right-0 top-1/2 -translate-y-1/2 absolute bg-black/50 hover:bg-black/70 text-white p-2 rounded-l-lg" onclick="scrollRow('boxOfficeRow', 1)">
+            ›
+          </button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- Loading State -->
+  <div id="loadingState" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 hidden">
+    <div class="text-center">
+      <div class="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-red-600 mb-4"></div>
+      <p class="text-white text-lg">Loading amazing content...</p>
+    </div>
+  </div>
+
+  <!-- Movie Modal -->
+  <div id="movieModal" class="fixed inset-0 bg-black bg-opacity-90 hidden flex items-center justify-center z-50">
+    <div class="bg-white rounded-lg p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto m-4">
+      <div class="flex justify-between items-start mb-4">
+        <h3 id="modalTitle" class="text-2xl font-bold text-black"></h3>
+        <button onclick="hideMovieModal()" class="text-gray-500 hover:text-gray-700 text-2xl">
+          ×
+        </button>
+      </div>
+      <div id="modalContent" class="text-black">
+        <!-- Movie details will be populated here -->
+      </div>
+    </div>
+  </div>
+
+  <style>
+    .scrollbar-hide::-webkit-scrollbar {
+      display: none;
+    }
+    .scrollbar-hide {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+
+    .scroll-btn {
+      z-index: 10;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+
+    section:hover .scroll-btn {
+      opacity: 1;
+    }
+
+    .movie-card {
+      flex: 0 0 200px;
+      transition: transform 0.3s, box-shadow 0.3s;
+    }
+
+    .movie-card:hover {
+      transform: scale(1.05);
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+      z-index: 20;
+    }
+  </style>
+
+  <script>
+    const token = localStorage.getItem('authToken');
+    let heroMovieIndex = 0;
+    let heroMovies = [];
+
+    // Load content when page loads
+    document.addEventListener('DOMContentLoaded', async () => {
+      showLoading();
+      try {
+        await Promise.all([
+          loadHeroMovie(),
+          loadTrendingMovies(),
+          loadPopularMovies(),
+          loadTrendingShows(),
+          loadPopularShows(),
+          loadBoxOfficeMovies()
+        ]);
+      } catch (error) {
+        console.error('Error loading content:', error);
+      } finally {
+        hideLoading();
+      }
+    });
+
+    async function loadHeroMovie() {
+      try {
+        const response = await fetch('http://localhost:3000/api/trakt-new/movies/popular');
+        if (response.ok) {
+          heroMovies = await response.json();
+          if (heroMovies.length > 0) {
+            displayHeroMovie(heroMovies[0]);
+            startHeroRotation();
+          }
+        }
+      } catch (error) {
+        console.error('Error loading hero movie:', error);
+      }
+    }
+
+    function displayHeroMovie(movie) {
+      const heroBackground = document.getElementById('heroBackground');
+      const heroMovieInfo = document.getElementById('heroMovieInfo');
+
+      if (movie.poster) {
+        heroBackground.style.backgroundImage = `url(${movie.poster})`;
+        heroBackground.style.backgroundSize = 'cover';
+        heroBackground.style.backgroundPosition = 'center';
+      }
+
+      const title = heroMovieInfo.querySelector('h2');
+      const description = heroMovieInfo.querySelector('p');
+      title.textContent = movie.title || movie.movie?.title || 'Featured Movie';
+      description.textContent = movie.overview || movie.plot || 'An amazing movie experience awaits you.';
+      heroMovieInfo.classList.remove('hidden');
+    }
+
+    function startHeroRotation() {
+      setInterval(() => {
+        heroMovieIndex = (heroMovieIndex + 1) % heroMovies.length;
+        displayHeroMovie(heroMovies[heroMovieIndex]);
+      }, 10000); // Rotate every 10 seconds
+    }
+
+    async function loadTrendingMovies() {
+      await loadMovieRow('trendingMoviesRow', 'http://localhost:3000/api/trakt-new/movies/trending', 'movie');
+    }
+
+    async function loadPopularMovies() {
+      await loadMovieRow('popularMoviesRow', 'http://localhost:3000/api/trakt-new/movies/popular', 'movie');
+    }
+
+    async function loadTrendingShows() {
+      await loadMovieRow('trendingShowsRow', 'http://localhost:3000/api/trakt-new/shows/trending', 'show');
+    }
+
+    async function loadPopularShows() {
+      await loadMovieRow('popularShowsRow', 'http://localhost:3000/api/trakt-new/shows/popular', 'show');
+    }
+
+    async function loadBoxOfficeMovies() {
+      await loadMovieRow('boxOfficeRow', 'http://localhost:3000/api/trakt-new/movies/box-office', 'movie');
+    }
+
+    async function loadMovieRow(rowId, endpoint, type) {
+      try {
+        const response = await fetch(endpoint);
+        if (response.ok) {
+          const data = await response.json();
+          const row = document.querySelector(`#${rowId} .flex.gap-4`);
+          row.innerHTML = data.slice(0, 10).map(item => createMovieCard(item, type)).join('');
+        }
+      } catch (error) {
+        console.error(`Error loading ${rowId}:`, error);
+      }
+    }
+
+    function createMovieCard(item, type) {
+      const movie = type === 'show' ? (item.show || item) : (item.movie || item);
+      const id = item.id || item.ids?.trakt || movie.id || movie.ids?.trakt;
+      const title = movie.title || movie.name || `${type === 'show' ? 'TV Show' : 'Movie'} ${id}`;
+      const year = movie.year || 'N/A';
+      const poster = movie.poster;
+      const rating = movie.rating;
+
+      return `
+        <div class="movie-card bg-gray-800 rounded-lg overflow-hidden cursor-pointer" onclick="showMovieDetails('${id}', '${type}')">
+          <div class="aspect-[2/3] bg-gray-700 relative">
+            ${poster ?
+              `<img src="${poster}" alt="${title}" class="w-full h-full object-cover">` :
+              `<div class="w-full h-full flex items-center justify-center text-gray-400 text-4xl">
+                ${type === 'show' ? '📺' : '🎬'}
+              </div>`
+            }
+            ${rating ? `<div class="absolute top-2 right-2 bg-yellow-500 text-black px-2 py-1 rounded text-xs font-bold">⭐ ${rating}</div>` : ''}
+          </div>
+          <div class="p-3">
+            <h4 class="font-semibold text-sm mb-1 truncate">${title}</h4>
+            <p class="text-xs text-gray-400">${year}</p>
+          </div>
+        </div>
+      `;
+    }
+
+    function scrollRow(rowId, direction) {
+      const row = document.getElementById(rowId);
+      const scrollAmount = 220; // Card width + gap
+      row.scrollBy({
+        left: direction * scrollAmount,
+        behavior: 'smooth'
+      });
+    }
+
+    async function showMovieDetails(id, type) {
+      try {
+        const response = await fetch(`http://localhost:3000/api/trakt-new/${type}s/${id}`);
+        if (response.ok) {
+          const data = await response.json();
+          displayMovieModal(data, type);
+        } else {
+          showMessage('Failed to load details', 'error');
+        }
+      } catch (error) {
+        showMessage('Network error', 'error');
+      }
+    }
+
+    function displayMovieModal(item, type) {
+      const modal = document.getElementById('movieModal');
+      const modalTitle = document.getElementById('modalTitle');
+      const modalContent = document.getElementById('modalContent');
+
+      const movie = type === 'show' ? item : item;
+      const title = movie.title || movie.name || 'Untitled';
+      const year = movie.year || 'N/A';
+      const poster = movie.poster;
+      const overview = movie.overview || movie.plot || movie.tagline || 'No description available.';
+      const rating = movie.rating;
+      const runtime = movie.runtime;
+      const genres = movie.genres || [];
+
+      modalTitle.textContent = title;
+
+      modalContent.innerHTML = `
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div class="md:col-span-1">
+            ${poster ?
+              `<img src="${poster}" alt="${title}" class="w-full rounded-lg shadow-lg">` :
+              `<div class="aspect-[2/3] bg-gray-200 rounded-lg flex items-center justify-center text-gray-400 text-6xl">
+                ${type === 'show' ? '📺' : '🎬'}
+              </div>`
+            }
+          </div>
+
+          <div class="md:col-span-2 space-y-4">
+            <div class="flex items-center gap-4 mb-4">
+              <span class="text-2xl font-bold">${title}</span>
+              <span class="text-gray-600">(${year})</span>
+              ${rating ? `<span class="bg-yellow-500 text-black px-3 py-1 rounded-full text-sm font-bold">⭐ ${rating}</span>` : ''}
+            </div>
+
+            <div class="flex gap-4 text-sm text-gray-600">
+              ${runtime ? `<span>⏱️ ${runtime} min</span>` : ''}
+              ${genres.length > 0 ? `<span>🎭 ${genres.slice(0, 3).join(', ')}</span>` : ''}
+            </div>
+
+            <div>
+              <h4 class="font-semibold mb-2">Overview</h4>
+              <p class="text-gray-700 leading-relaxed">${overview}</p>
+            </div>
+
+            <div class="flex gap-3 pt-4 border-t">
+              ${token ? `
+                <button onclick="addToWatchlist('${movie.id || movie.ids?.trakt}', '${title}')"
+                        class="bg-red-600 text-white px-6 py-2 rounded-lg hover:bg-red-700 transition-colors">
+                  + My List
+                </button>
+              ` : `
+                <a href="/register" class="bg-red-600 text-white px-6 py-2 rounded-lg hover:bg-red-700 transition-colors">
+                  Sign Up to Add
+                </a>
+              `}
+
+              <a href="/${type}s" class="bg-gray-200 text-gray-800 px-6 py-2 rounded-lg hover:bg-gray-300 transition-colors">
+                Browse ${type === 'show' ? 'Shows' : 'Movies'}
+              </a>
+
+              <button onclick="hideMovieModal()"
+                      class="bg-gray-500 text-white px-6 py-2 rounded-lg hover:bg-gray-600 transition-colors">
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+
+      modal.classList.remove('hidden');
+    }
+
+    function hideMovieModal() {
+      document.getElementById('movieModal').classList.add('hidden');
+    }
+
+    async function addToWatchlist(movieId, title) {
+      if (!token) {
+        showMessage('Please login to add to watchlist', 'error');
+        return;
+      }
+
+      try {
+        const response = await fetch('http://localhost:3000/api/watchlist', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            movieId: movieId,
+            notes: `Added from homepage: ${title}`,
+            priority: 'medium'
+          })
+        });
+
+        if (response.ok) {
+          showMessage(`${title} added to watchlist`, 'success');
+        } else {
+          showMessage('Failed to add to watchlist', 'error');
+        }
+      } catch (error) {
+        showMessage('Network error', 'error');
+      }
+    }
+
+    function showLoading() {
+      document.getElementById('loadingState').classList.remove('hidden');
+    }
+
+    function hideLoading() {
+      document.getElementById('loadingState').classList.add('hidden');
+    }
+
+    function showMessage(text, type) {
+      const messageDiv = document.createElement('div');
+      messageDiv.className = `fixed top-4 right-4 p-4 rounded-md z-50 ${type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`;
+      messageDiv.textContent = text;
+      document.body.appendChild(messageDiv);
+
+      setTimeout(() => {
+        messageDiv.remove();
+      }, 3000);
+    }
+
+    // Close modal on background click
+    document.getElementById('movieModal').addEventListener('click', (e) => {
+      if (e.target.id === 'movieModal') {
+        hideMovieModal();
+      }
+    });
+
+    // Keyboard navigation
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        hideMovieModal();
+      }
+    });
+  </script>
+</Layout>
