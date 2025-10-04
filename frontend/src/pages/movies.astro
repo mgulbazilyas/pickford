@@ -93,6 +93,7 @@ import Layout from '../layouts/Layout.astro';
   <div id="message" class="fixed top-4 right-4 p-4 rounded-md hidden z-50"></div>
 
   <script>
+    const API_BASE = import.meta.env.PUBLIC_API_BASE_URL || 'http://localhost:3000';
     const token = localStorage.getItem('authToken');
     let currentMovies = [];
 

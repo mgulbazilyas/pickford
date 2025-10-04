@@ -269,7 +269,7 @@ const { id } = Astro.params;
   </div>
 
   <script>
-    const API_BASE = 'http://localhost:3000/api';
+    const API_BASE = import.meta.env.PUBLIC_API_BASE_URL || 'http://localhost:3000/api';
     const movieId = document.querySelector('[data-movie-id]').dataset.movieId;
     let authToken = localStorage.getItem('authToken');
     let movieData = null;

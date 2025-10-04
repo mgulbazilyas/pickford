@@ -63,10 +63,10 @@ COPY package.json .
 # the built application from the build stage into the image.
 COPY --from=deps /usr/src/app/node_modules ./node_modules
 COPY --from=build /usr/src/app/dist ./dist
-
+COPY ./run-server.mjs ./
 
 # Expose the port that the application listens on.
-EXPOSE 4321
+EXPOSE 8080
 
 # Run the application.
-CMD npm run start
+CMD npm start

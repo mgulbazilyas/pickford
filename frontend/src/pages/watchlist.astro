@@ -147,6 +147,7 @@ import Layout from '../layouts/Layout.astro';
   <div id="message" class="fixed top-4 right-4 p-4 rounded-md hidden z-50"></div>
 
   <script>
+    const API_BASE = import.meta.env.PUBLIC_API_BASE_URL || 'http://localhost:3000';
     const token = localStorage.getItem('authToken');
     if (!token) {
       window.location.href = '/login';
@@ -156,7 +157,7 @@ import Layout from '../layouts/Layout.astro';
 
     async function fetchWatchlist() {
       try {
-        const response = await fetch('http://localhost:3000/api/watchlist?includeDetails=true', {
+        const response = await fetch(`${API_BASE}/api/watchlist?includeDetails=true`, {
           headers: {
             'Authorization': `Bearer ${token}`
           }
@@ -262,7 +263,7 @@ import Layout from '../layouts/Layout.astro';
       if (!confirm('Are you sure you want to remove this movie from your watchlist?')) return;
 
       try {
-        const response = await fetch(`http://localhost:3000/api/watchlist?movieId=${movieId}`, {
+        const response = await fetch(`${API_BASE}/api/watchlist?movieId=${movieId}`, {
           method: 'DELETE',
           headers: {
             'Authorization': `Bearer ${token}`
@@ -298,7 +299,7 @@ import Layout from '../layouts/Layout.astro';
       const formData = new FormData(e.target);
 
       try {
-        const response = await fetch('http://localhost:3000/api/watchlist', {
+        const response = await fetch(`${API_BASE}/api/watchlist`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -329,7 +330,7 @@ import Layout from '../layouts/Layout.astro';
       const formData = new FormData(e.target);
 
       try {
-        const response = await fetch('http://localhost:3000/api/watchlist', {
+        const response = await fetch(`${API_BASE}/api/watchlist`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',

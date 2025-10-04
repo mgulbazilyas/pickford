@@ -197,6 +197,7 @@ import Layout from '../layouts/Layout.astro';
   </style>
 
   <script>
+    const API_BASE = import.meta.env.PUBLIC_API_BASE_URL || 'http://localhost:3000';
     const token = localStorage.getItem('authToken');
     let heroMovieIndex = 0;
     let heroMovies = [];
@@ -222,7 +223,7 @@ import Layout from '../layouts/Layout.astro';
 
     async function loadHeroMovie() {
       try {
-        const response = await fetch('http://localhost:3000/api/trakt-new/movies/popular');
+        const response = await fetch(`${API_BASE}/api/trakt-new/movies/popular`);
         if (response.ok) {
           heroMovies = await response.json();
           if (heroMovies.length > 0) {
@@ -260,23 +261,23 @@ import Layout from '../layouts/Layout.astro';
     }
 
     async function loadTrendingMovies() {
-      await loadMovieRow('trendingMoviesRow', 'http://localhost:3000/api/trakt-new/movies/trending', 'movie');
+      await loadMovieRow('trendingMoviesRow', `${API_BASE}/api/trakt-new/movies/trending`, 'movie');
     }
 
     async function loadPopularMovies() {
-      await loadMovieRow('popularMoviesRow', 'http://localhost:3000/api/trakt-new/movies/popular', 'movie');
+      await loadMovieRow('popularMoviesRow', `${API_BASE}/api/trakt-new/movies/popular`, 'movie');
     }
 
     async function loadTrendingShows() {
-      await loadMovieRow('trendingShowsRow', 'http://localhost:3000/api/trakt-new/shows/trending', 'show');
+      await loadMovieRow('trendingShowsRow', `${API_BASE}/api/trakt-new/shows/trending`, 'show');
     }
 
     async function loadPopularShows() {
-      await loadMovieRow('popularShowsRow', 'http://localhost:3000/api/trakt-new/shows/popular', 'show');
+      await loadMovieRow('popularShowsRow', `${API_BASE}/api/trakt-new/shows/popular`, 'show');
     }
 
     async function loadBoxOfficeMovies() {
-      await loadMovieRow('boxOfficeRow', 'http://localhost:3000/api/trakt-new/movies/box-office', 'movie');
+      await loadMovieRow('boxOfficeRow', `${API_BASE}/api/trakt-new/movies/box-office`, 'movie');
     }
 
     async function loadMovieRow(rowId, endpoint, type) {
@@ -330,7 +331,7 @@ import Layout from '../layouts/Layout.astro';
 
     async function showMovieDetails(id, type) {
       try {
-        const response = await fetch(`http://localhost:3000/api/trakt-new/${type}s/${id}`);
+        const response = await fetch(`${API_BASE}/api/trakt-new/${type}s/${id}`);
         if (response.ok) {
           const data = await response.json();
           displayMovieModal(data, type);
@@ -425,7 +426,7 @@ import Layout from '../layouts/Layout.astro';
       }
 
       try {
-        const response = await fetch('http://localhost:3000/api/watchlist', {
+        const response = await fetch(`${API_BASE}/api/watchlist`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
