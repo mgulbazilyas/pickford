@@ -3,9 +3,32 @@ const express = require("express")
 const cors = require("cors")
 const app = express()
 
+// Force enable console logging regardless of NODE_ENV
+if (process.env.NODE_ENV === 'production') {
+  console.log('=== BACKEND SERVER STARTING IN PRODUCTION MODE ===')
+  console.log('Console logging is explicitly enabled')
+  console.log('Environment variables:', {
+    NODE_ENV: process.env.NODE_ENV,
+    DEBUG: process.env.DEBUG,
+    LOG_LEVEL: process.env.LOG_LEVEL,
+    PORT: process.env.PORT
+  })
+}
+
 // MongoDB database instance
 const { db } = require('./lib/db-mongodb')
 const { AuthService } = require('./lib/auth')
+
+// Initialize database connection
+async function initializeDatabase() {
+  try {
+    await db.connect()
+    console.log('[app] Database initialized successfully')
+  } catch (error) {
+    console.error('[app] Failed to initialize database:', error)
+    // Continue running but with limited functionality
+  }
+}
 
 // Trakt config (server env)
 const BASE_URL = (process.env.TRAKT_BASE_URL || "https://api.trakt.tv").replace(/\/+$/, "")
@@ -774,77 +797,120 @@ app.get("/api/logs", async (req, res) => {
 
 // Helper functions for auth handlers
 async function handleRegister(req, res, data) {
-  const { email, username, password, firstName, lastName } = data
+  try {
+    // Ensure database is connected
+    if (!db.isConnected) {
+      await db.connect()
+    }
 
-  if (!email || !username || !password) {
-    return res.status(400).json({ error: 'Email, username, and password are required' })
+    const { email, username, password, firstName, lastName } = data
+
+    if (!email || !username || !password) {
+      return res.status(400).json({ error: 'Email, username, and password are required' })
+    }
+
+    if (username.length < 3) {
+      return res.status(400).json({ error: 'Username must be at least 3 characters' })
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters' })
+    }
+
+    // Hash password before storing
+    const hashedPassword = await AuthService.hashPassword(password)
+
+    const user = await db.createUser({
+      email,
+      username,
+      password: hashedPassword,
+      firstName: firstName || '',
+      lastName: lastName || ''
+    })
+
+    const token = await AuthService.createSession(user._id)
+
+    return res.status(201).json({ user, token })
+  } catch (error) {
+    console.error('[handleRegister] Error:', error)
+    return res.status(500).json({ error: error.message || 'Registration failed' })
   }
-
-  if (username.length < 3) {
-    return res.status(400).json({ error: 'Username must be at least 3 characters' })
-  }
-
-  if (password.length < 6) {
-    return res.status(400).json({ error: 'Password must be at least 6 characters' })
-  }
-
-  const user = await db.createUser({
-    email,
-    username,
-    password,
-    firstName: firstName || '',
-    lastName: lastName || ''
-  })
-
-  const token = await AuthService.createSession(user._id)
-
-  return res.status(201).json({ user, token })
 }
 
 async function handleLogin(req, res, data) {
-  const { email, password } = data
+  try {
+    // Ensure database is connected
+    if (!db.isConnected) {
+      await db.connect()
+    }
 
-  if (!email || !password) {
-    return res.status(400).json({ error: 'Email and password are required' })
+    const { email, password } = data
+
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email and password are required' })
+    }
+
+    const user = await db.authenticateUser(email, password)
+
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid email or password' })
+    }
+
+    const token = await AuthService.createSession(user._id)
+
+    return res.status(200).json({ user, token })
+  } catch (error) {
+    console.error('[handleLogin] Error:', error)
+    return res.status(500).json({ error: error.message || 'Login failed' })
   }
-
-  const user = await db.authenticateUser(email, password)
-
-  if (!user) {
-    return res.status(401).json({ error: 'Invalid email or password' })
-  }
-
-  const token = await AuthService.createSession(user._id)
-
-  return res.status(200).json({ user, token })
 }
 
 async function handleLogout(req, res, data) {
-  const authHeader = req.get('authorization')
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Authorization header required' })
+  try {
+    // Ensure database is connected
+    if (!db.isConnected) {
+      await db.connect()
+    }
+
+    const authHeader = req.get('authorization')
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Authorization header required' })
+    }
+
+    const token = authHeader.substring(7)
+    await AuthService.destroySession(token)
+
+    return res.status(200).json({ message: 'Logged out successfully' })
+  } catch (error) {
+    console.error('[handleLogout] Error:', error)
+    return res.status(500).json({ error: error.message || 'Logout failed' })
   }
-
-  const token = authHeader.substring(7)
-  await AuthService.destroySession(token)
-
-  return res.status(200).json({ message: 'Logged out successfully' })
 }
 
 async function handleVerify(req, res, data) {
-  const authHeader = req.get('authorization')
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Authorization header required' })
+  try {
+    // Ensure database is connected
+    if (!db.isConnected) {
+      await db.connect()
+    }
+
+    const authHeader = req.get('authorization')
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Authorization header required' })
+    }
+
+    const token = authHeader.substring(7)
+    const user = await AuthService.verifySession(token)
+
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid or expired token' })
+    }
+
+    return res.status(200).json({ user })
+  } catch (error) {
+    console.error('[handleVerify] Error:', error)
+    return res.status(500).json({ error: error.message || 'Token verification failed' })
   }
-
-  const token = authHeader.substring(7)
-  const user = await AuthService.verifySession(token)
-
-  if (!user) {
-    return res.status(401).json({ error: 'Invalid or expired token' })
-  }
-
-  return res.status(200).json({ user })
 }
 
 // Export for Passenger
@@ -853,8 +919,15 @@ module.exports = app
 // Start the server if run directly
 if (require.main === module) {
   const port = process.env.PORT || 3000
-  app.listen(port, (err) => {
-    if (err) throw err
-    console.log(`[trakt-proxy] Express server ready on http://localhost:${port}`)
+  
+  // Initialize database first, then start server
+  initializeDatabase().then(() => {
+    app.listen(port, (err) => {
+      if (err) throw err
+      console.log(`[trakt-proxy] Express server ready on http://localhost:${port}`)
+    })
+  }).catch(error => {
+    console.error('[app] Failed to start server:', error)
+    process.exit(1)
   })
 }

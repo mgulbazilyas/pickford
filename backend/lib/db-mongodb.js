@@ -10,7 +10,7 @@ class Database {
 
   async connect() {
     if (this.isConnected) return
-
+    
     const uri = process.env.MONGODB_URI || 'mongodb://localhost:27017'
     const dbName = process.env.MONGODB_DB || 'trakt-proxy'
 

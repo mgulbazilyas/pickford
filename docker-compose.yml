@@ -12,28 +12,50 @@ services:
       TRAKT_API_VERSION: ${TRAKT_API_VERSION:-2}
       PORT: ${PORT:-3000}
       # MongoDB config used by lib/db-mongodb.ts
-      MONGODB_URI: ${MONGODB_URI:-mongodb://mongodb:27017}
+      MONGODB_URI: ${MONGODB_URI:-mongodb://admin:password@mongodb:27017}
       MONGODB_DB: ${MONGODB_DB:-trakt-proxy}
+      MONGO_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:-admin}
+      MONGO_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-password}
+      # Enable logging
+      DEBUG: "*"
+      LOG_LEVEL: "debug"
+      NODE_OPTIONS: "--enable-source-maps"
     ports:
       - "${PORT:-3000}:3000"
     depends_on:
       mongodb:
         condition: service_healthy
     restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+    environment:
+      # Enable logging
+      DEBUG: "*"
+      LOG_LEVEL: "debug"
+      NODE_OPTIONS: "--enable-source-maps"
     ports:
       - "80:8080"
       - "8000:8080"
     depends_on:
       - backend
     restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   mongodb:
     image: mongo:7.0
+    # container_name: trakt-proxy-mongodb
     environment:
       MONGO_INITDB_DATABASE: ${MONGODB_DB:-trakt-proxy}
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:-admin}

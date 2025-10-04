@@ -53,6 +53,10 @@ FROM base as final
 # Use production node environment by default.
 ENV NODE_ENV production
 
+# Enable console logging in production
+ENV DEBUG=*
+ENV LOG_LEVEL=debug
+
 # Run the application as a non-root user.
 USER node
 

@@ -285,8 +285,17 @@ import Layout from '../layouts/Layout.astro';
         const response = await fetch(endpoint);
         if (response.ok) {
           const data = await response.json();
+          // Handle both cached and non-cached data structures
+          let moviesData;
+          if (data.data && Array.isArray(data.data)) {
+            // This is cached data with .data array
+            moviesData = data.data;
+          } else {
+            // This is fresh data (direct array)
+            moviesData = data;
+          }
           const row = document.querySelector(`#${rowId} .flex.gap-4`);
-          row.innerHTML = data.slice(0, 10).map(item => createMovieCard(item, type)).join('');
+          row.innerHTML = moviesData.slice(0, 10).map(item => createMovieCard(item, type)).join('');
         }
       } catch (error) {
         console.error(`Error loading ${rowId}:`, error);
@@ -294,7 +303,21 @@ import Layout from '../layouts/Layout.astro';
     }
 
     function createMovieCard(item, type) {
-      const movie = type === 'show' ? (item.show || item) : (item.movie || item);
+      // Handle both cached and non-cached data structures
+      let movie;
+      if (type === 'show') {
+        movie = item.show || item;
+      } else {
+        // For movies, check if data is cached (has .data property) or direct
+        if (item.data && Array.isArray(item.data)) {
+          // This is cached data with .data array
+          movie = item;
+        } else {
+          // This is either fresh data or single item
+          movie = item.movie || item;
+        }
+      }
+      
       const id = item.id || item.ids?.trakt || movie.id || movie.ids?.trakt;
       const title = movie.title || movie.name || `${type === 'show' ? 'TV Show' : 'Movie'} ${id}`;
       const year = movie.year || 'N/A';

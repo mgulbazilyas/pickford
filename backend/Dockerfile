@@ -13,6 +13,10 @@ FROM node:${NODE_VERSION}-alpine
 # Use production node environment by default.
 ENV NODE_ENV production
 
+# Enable console logging in production
+ENV DEBUG=*
+ENV LOG_LEVEL=debug
+
 
 WORKDIR /usr/src/app
 
