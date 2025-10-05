@@ -164,7 +164,15 @@ import Layout from '../layouts/Layout.astro';
         const response = await fetch(endpoint);
 
         if (response.ok) {
-          currentMovies = await response.json();
+          const data = await response.json();
+          // Handle both cached and non-cached data structures
+          if (data.data && Array.isArray(data.data)) {
+            // This is cached data with .data array
+            currentMovies = data.data;
+          } else {
+            // This is fresh data (direct array)
+            currentMovies = data;
+          }
           renderMovies(currentMovies);
           movieCount.textContent = `${currentMovies.length} movies`;
         } else {
@@ -242,7 +250,16 @@ import Layout from '../layouts/Layout.astro';
         const response = await fetch(`http://localhost:3000/api/trakt-new/movies/${movieId}`);
 
         if (response.ok) {
-          const movie = await response.json();
+          const data = await response.json();
+          // Handle both cached and non-cached data structures
+          let movie;
+          if (data.data && typeof data.data === 'object') {
+            // This is cached data with .data object
+            movie = data.data;
+          } else {
+            // This is fresh data (direct object)
+            movie = data;
+          }
           displayMovieModal(movie);
         } else {
           showMessage('Failed to load movie details', 'error');
@@ -254,10 +271,12 @@ import Layout from '../layouts/Layout.astro';
 
     function displayMovieModal(movie) {
       const modal = document.getElementById('movieModal');
-      const modalTitle = document.getElementById('modalTitle');
-      const modalContent = document.getElementById('modalContent');
+      const modalTitle = document.getElementById('movieTitle');
+      const modalContent = document.getElementById('movieContent');
 
-      modalTitle.textContent = movie.title || movie.movie?.title || 'Movie Details';
+      // Handle both cached and non-cached data structures
+      const movieData = movie.movie || movie;
+      modalTitle.textContent = movieData.title || movie.title || 'Movie Details';
 
       modalContent.innerHTML = `
         <div class="space-y-4">

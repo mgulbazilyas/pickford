@@ -158,11 +158,31 @@ app.all("/api/trakt-new/*", async (req, res) => {
       const cached = await db.getCachedResponse(cacheKey)
 
       if (cached) {
-        data = cached.data
-        cacheStatus = "HIT"
+        // Handle both old format (with .data wrapper) and new format (direct)
+        if (cached.data && cached.data.data) {
+          // Old format with double nested .data
+          data = cached.data.data
+          cacheStatus = "HIT"
+        } else if (cached.data) {
+          // Old format with single .data wrapper
+          data = cached.data
+          cacheStatus = "HIT"
+        } else {
+          // New format (direct data)
+          data = cached
+          cacheStatus = cached._cacheStatus || "HIT"
+          
+          // Remove internal cache properties before returning
+          if (data._hasImages !== undefined) delete data._hasImages
+          if (data._cacheStatus !== undefined) delete data._cacheStatus
+        }
+
+        // Determine if images are available (for both old and new formats)
+        const hasImages = cached._hasImages !== undefined ? cached._hasImages :
+                          (cached.data && cached.data.hasImages !== undefined ? cached.data.hasImages : false)
 
         // If images are missing, fetch them separately
-        if (!cached.hasImages && path.startsWith("/movies/")) {
+        if (!hasImages && path.startsWith("/movies/")) {
           try {
             const imagesUrl = `${BASE_URL}${path}?extended=images`
             const imagesResponse = await fetch(imagesUrl, { headers })
@@ -170,7 +190,8 @@ app.all("/api/trakt-new/*", async (req, res) => {
 
             if (imagesData.movie && imagesData.movie.images) {
               data.movie = { ...data.movie, images: imagesData.movie.images }
-              await db.updateCachedResponse(cacheKey, { data, hasImages: true })
+              // Update cache with images using new format
+              await db.updateCachedResponse(cacheKey, { ...data, _hasImages: true, _cacheStatus: "HIT" })
             }
           } catch (e) {
             console.error("Failed to fetch images:", e)
@@ -193,7 +214,8 @@ app.all("/api/trakt-new/*", async (req, res) => {
       if (method === "GET") {
         const cacheKey = path + JSON.stringify(query)
         const hasImages = data.movie && data.movie.images
-        await db.cacheResponse(cacheKey, { data, hasImages })
+        // Store data directly without wrapper to avoid confusion
+        await db.cacheResponse(cacheKey, { ...data, _hasImages: hasImages, _cacheStatus: "HIT" })
       }
     }
 
@@ -319,19 +341,22 @@ app.get("/api/comments", async (req, res) => {
     }
 
     let comments
+    let currentUserId = null
+
+    // Get current user if authenticated
+    const authHeader = req.get('authorization')
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.substring(7)
+      const authUser = await AuthService.verifySession(token)
+      if (authUser) {
+        currentUserId = authUser._id
+      }
+    }
 
     if (movieId) {
-      comments = await db.getMovieComments(movieId, limit, skip)
+      comments = await db.getMovieComments(movieId, limit, skip, currentUserId)
     } else if (userId) {
-      const authHeader = req.get('authorization')
-      let authUser = null
-
-      if (authHeader && authHeader.startsWith('Bearer ')) {
-        const token = authHeader.substring(7)
-        authUser = await AuthService.verifySession(token)
-      }
-
-      if (!authUser || authUser._id.toString() !== userId) {
+      if (!currentUserId || currentUserId.toString() !== userId) {
         return res.status(401).json({ error: 'Authentication required to view user comments' })
       }
 
@@ -408,15 +433,16 @@ app.put("/api/comments", async (req, res) => {
       return res.status(400).json({ error: 'Comment ID is required' })
     }
 
-    if (action === 'like' || action === 'unlike') {
-      await db.updateCommentLikes(
+    if (action === 'toggleLike') {
+      const result = await db.updateCommentLikes(
         new (require('mongodb').ObjectId)(commentId),
-        action === 'like' ? 1 : -1,
         user._id
       )
 
       return res.status(200).json({
-        message: `Comment ${action}d successfully`
+        message: `Comment ${result.action} successfully`,
+        action: result.action,
+        likes: result.likes
       })
     }
 
@@ -484,15 +510,14 @@ app.get("/api/ratings", async (req, res) => {
       return res.status(400).json({ error: 'Either movieId or userId is required' })
     }
 
-    let result = { ratings: [] }
+    let result
 
     if (movieId) {
-      const ratings = await db.getMovieRatings(movieId, limit, skip)
-      result = { ratings }
+      result = await db.getMovieRatings(movieId, limit, skip)
 
       if (includeAverage === 'true') {
         const average = await db.getAverageMovieRating(movieId)
-        result = { ratings, average }
+        result.average = average
       }
 
       const authHeader = req.get('authorization')
@@ -505,7 +530,10 @@ app.get("/api/ratings", async (req, res) => {
 
       if (authUser) {
         const userRating = await db.getMovieRating(movieId, authUser._id)
-        result = { ratings, average: includeAverage === 'true' ? average : null, userRating }
+        result.userRating = userRating
+        if (includeAverage !== 'true') {
+          result.average = null
+        }
       }
     } else if (userId) {
       const authHeader = req.get('authorization')
@@ -520,8 +548,7 @@ app.get("/api/ratings", async (req, res) => {
         return res.status(401).json({ error: 'Authentication required to view user ratings' })
       }
 
-      const ratings = await db.getUserRatings(new (require('mongodb').ObjectId)(userId), limit, skip)
-      result = { ratings }
+      result = await db.getUserRatings(new (require('mongodb').ObjectId)(userId), limit, skip)
     }
 
     return res.status(200).json(result)

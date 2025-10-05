@@ -225,7 +225,15 @@ import Layout from '../layouts/Layout.astro';
       try {
         const response = await fetch(`${API_BASE}/api/trakt-new/movies/popular`);
         if (response.ok) {
-          heroMovies = await response.json();
+          const data = await response.json();
+          // Handle both cached and non-cached data structures
+          if (data.data && Array.isArray(data.data)) {
+            // This is cached data with .data array
+            heroMovies = data.data;
+          } else {
+            // This is fresh data (direct array)
+            heroMovies = data;
+          }
           if (heroMovies.length > 0) {
             displayHeroMovie(heroMovies[0]);
             startHeroRotation();
@@ -371,7 +379,14 @@ import Layout from '../layouts/Layout.astro';
       const modalTitle = document.getElementById('modalTitle');
       const modalContent = document.getElementById('modalContent');
 
-      const movie = type === 'show' ? item : item;
+      // Handle both cached and non-cached data structures
+      let movie;
+      if (type === 'show') {
+        movie = item.show || item;
+      } else {
+        movie = item.movie || item;
+      }
+      
       const title = movie.title || movie.name || 'Untitled';
       const year = movie.year || 'N/A';
       const poster = movie.poster;

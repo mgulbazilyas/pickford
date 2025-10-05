@@ -104,18 +104,50 @@ class Database {
     return result.insertedId
   }
 
-  async getMovieComments(movieId, limit = 20, skip = 0) {
+  async getMovieComments(movieId, limit = 20, skip = 0, currentUserId = null) {
     const comments = this.db.collection('movie_comments')
+    const users = this.db.collection('users')
+    
     const cursor = comments.find({ movieId })
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit)
 
     const commentsArray = await cursor.toArray()
+    
+    // Fetch user information for each comment
+    const commentsWithUsers = await Promise.all(
+      commentsArray.map(async (comment) => {
+        const user = await users.findOne(
+          { _id: new ObjectId(comment.userId) },
+          { projection: { _id: 1, username: 1, firstName: 1, lastName: 1 } }
+        )
+        
+        // Check if current user has liked this comment
+        let isLikedByCurrentUser = false
+        if (currentUserId) {
+          isLikedByCurrentUser = comment.likedBy.some(
+            likedUserId => likedUserId.toString() === currentUserId.toString()
+          )
+        }
+        
+        return {
+          ...comment,
+          user: user ? {
+            _id: user._id,
+            username: user.username,
+            firstName: user.firstName,
+            lastName: user.lastName
+          } : null,
+          isLikedByCurrentUser
+        }
+      })
+    )
+    
     const totalCount = await comments.countDocuments({ movieId })
 
     return {
-      comments: commentsArray,
+      comments: commentsWithUsers,
       pagination: {
         page: Math.floor(skip / limit) + 1,
         limit,
@@ -146,20 +178,21 @@ class Database {
     }
   }
 
-  async updateCommentLikes(commentId, increment, userId) {
+  async updateCommentLikes(commentId, userId) {
     const comments = this.db.collection('movie_comments')
-
-    if (increment > 0) {
-      // Like - add user to likedBy if not already there
-      await comments.updateOne(
-        { _id: new ObjectId(commentId) },
-        {
-          $inc: { likes: 1 },
-          $addToSet: { likedBy: new ObjectId(userId) }
-        }
-      )
-    } else {
-      // Unlike - remove user from likedBy
+    
+    // First check if user has already liked this comment
+    const comment = await comments.findOne({ _id: new ObjectId(commentId) })
+    if (!comment) {
+      throw new Error('Comment not found')
+    }
+    
+    const hasLiked = comment.likedBy.some(
+      likedUserId => likedUserId.toString() === userId.toString()
+    )
+    
+    if (hasLiked) {
+      // Unlike - remove user from likedBy and decrement likes
       await comments.updateOne(
         { _id: new ObjectId(commentId) },
         {
@@ -167,6 +200,17 @@ class Database {
           $pull: { likedBy: new ObjectId(userId) }
         }
       )
+      return { action: 'unliked', likes: comment.likes - 1 }
+    } else {
+      // Like - add user to likedBy and increment likes
+      await comments.updateOne(
+        { _id: new ObjectId(commentId) },
+        {
+          $inc: { likes: 1 },
+          $addToSet: { likedBy: new ObjectId(userId) }
+        }
+      )
+      return { action: 'liked', likes: comment.likes + 1 }
     }
   }
 
@@ -193,16 +237,39 @@ class Database {
 
   async getMovieRatings(movieId, limit = 20, skip = 0) {
     const ratings = this.db.collection('movie_ratings')
+    const users = this.db.collection('users')
+    
     const cursor = ratings.find({ movieId })
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit)
 
     const ratingsArray = await cursor.toArray()
+    
+    // Fetch user information for each rating
+    const ratingsWithUsers = await Promise.all(
+      ratingsArray.map(async (rating) => {
+        const user = await users.findOne(
+          { _id: new ObjectId(rating.userId) },
+          { projection: { _id: 1, username: 1, firstName: 1, lastName: 1 } }
+        )
+        
+        return {
+          ...rating,
+          user: user ? {
+            _id: user._id,
+            username: user.username,
+            firstName: user.firstName,
+            lastName: user.lastName
+          } : null
+        }
+      })
+    )
+    
     const totalCount = await ratings.countDocuments({ movieId })
 
     return {
-      ratings: ratingsArray,
+      ratings: ratingsWithUsers,
       pagination: {
         page: Math.floor(skip / limit) + 1,
         limit,

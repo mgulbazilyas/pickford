@@ -197,15 +197,21 @@ const { id } = Astro.params;
               <h3 class="text-xl font-semibold mb-4">Write a Review</h3>
               <form id="reviewForm" class="space-y-4">
                 <div>
-                  <label class="block text-sm font-medium text-gray-700 mb-2">Rating</label>
-                  <div class="flex gap-1" id="ratingContainer">
-                    <button type="button" data-rating="1" class="rating-star text-3xl text-gray-300 focus:outline-none cursor-pointer transition-colors">⭐</button>
-                    <button type="button" data-rating="2" class="rating-star text-3xl text-gray-300 focus:outline-none cursor-pointer transition-colors">⭐</button>
-                    <button type="button" data-rating="3" class="rating-star text-3xl text-gray-300 focus:outline-none cursor-pointer transition-colors">⭐</button>
-                    <button type="button" data-rating="4" class="rating-star text-3xl text-gray-300 focus:outline-none cursor-pointer transition-colors">⭐</button>
-                    <button type="button" data-rating="5" class="rating-star text-3xl text-gray-300 focus:outline-none cursor-pointer transition-colors">⭐</button>
+                  <label class="block text-sm font-medium text-gray-700 mb-2">Rating (1-10)</label>
+                  <div class="flex gap-1 flex-wrap" id="ratingContainer">
+                    <button type="button" data-rating="1" class="rating-star text-2xl text-gray-300 hover:text-yellow-400 focus:outline-none cursor-pointer transition-colors">⭐</button>
+                    <button type="button" data-rating="2" class="rating-star text-2xl text-gray-300 hover:text-yellow-400 focus:outline-none cursor-pointer transition-colors">⭐</button>
+                    <button type="button" data-rating="3" class="rating-star text-2xl text-gray-300 hover:text-yellow-400 focus:outline-none cursor-pointer transition-colors">⭐</button>
+                    <button type="button" data-rating="4" class="rating-star text-2xl text-gray-300 hover:text-yellow-400 focus:outline-none cursor-pointer transition-colors">⭐</button>
+                    <button type="button" data-rating="5" class="rating-star text-2xl text-gray-300 hover:text-yellow-400 focus:outline-none cursor-pointer transition-colors">⭐</button>
+                    <button type="button" data-rating="6" class="rating-star text-2xl text-gray-300 hover:text-yellow-400 focus:outline-none cursor-pointer transition-colors">⭐</button>
+                    <button type="button" data-rating="7" class="rating-star text-2xl text-gray-300 hover:text-yellow-400 focus:outline-none cursor-pointer transition-colors">⭐</button>
+                    <button type="button" data-rating="8" class="rating-star text-2xl text-gray-300 hover:text-yellow-400 focus:outline-none cursor-pointer transition-colors">⭐</button>
+                    <button type="button" data-rating="9" class="rating-star text-2xl text-gray-300 hover:text-yellow-400 focus:outline-none cursor-pointer transition-colors">⭐</button>
+                    <button type="button" data-rating="10" class="rating-star text-2xl text-gray-300 hover:text-yellow-400 focus:outline-none cursor-pointer transition-colors">⭐</button>
                   </div>
                   <input type="hidden" id="reviewRating" name="rating" value="0">
+                  <p class="text-sm text-gray-500 mt-1">Current rating: <span id="currentRating">0</span>/10</p>
                 </div>
                 <div>
                   <label class="block text-sm font-medium text-gray-700 mb-2">Review Title</label>
@@ -276,6 +282,9 @@ const { id } = Astro.params;
 
     // Initialize page
     document.addEventListener('DOMContentLoaded', async () => {
+      // Initialize rating stars to 0
+      setRating(0);
+      
       await loadMovieDetails();
       await loadComments();
       await loadReviews();
@@ -295,7 +304,15 @@ const { id } = Astro.params;
         const response = await fetch(`${API_BASE}/trakt-new/movies/${movieId}?extended=full`);
 
         if (response.ok) {
-          movieData = await response.json();
+          const data = await response.json();
+          // Handle both cached and non-cached data structures
+          if (data.data && typeof data.data === 'object') {
+            // This is cached data with .data object
+            movieData = data.data;
+          } else {
+            // This is fresh data (direct object)
+            movieData = data;
+          }
           displayMovieDetails(movieData);
           movieContent.classList.remove('hidden');
         } else {
@@ -310,38 +327,44 @@ const { id } = Astro.params;
     }
 
     function displayMovieDetails(movie) {
+      // Handle both cached and non-cached data structures
+      const movieData = movie.movie || movie;
+      
       // Basic info
-      document.getElementById('movieTitle').textContent = movie.title || movie.movie?.title || 'Unknown Title';
-      document.getElementById('movieYear').textContent = movie.year || 'N/A';
-      document.getElementById('movieRating').textContent = movie.rating ? `⭐ ${movie.rating}` : '⭐ N/A';
-      document.getElementById('movieRuntime').textContent = movie.runtime ? `⏱️ ${movie.runtime} min` : '⏱️ N/A';
-      document.getElementById('movieOverview').textContent = movie.overview || movie.plot || 'No overview available.';
+      document.getElementById('movieTitle').textContent = movieData.title || movie.title || 'Unknown Title';
+      document.getElementById('movieYear').textContent = movieData.year || movie.year || 'N/A';
+      document.getElementById('movieRating').textContent = movieData.rating ? `⭐ ${movieData.rating}` : '⭐ N/A';
+      document.getElementById('movieRuntime').textContent = movieData.runtime ? `⏱️ ${movieData.runtime} min` : '⏱️ N/A';
+      document.getElementById('movieOverview').textContent = movieData.overview || movieData.plot || movie.overview || movie.plot || 'No overview available.';
 
       // Poster
       const posterContainer = document.getElementById('moviePoster');
-      if (movie.poster) {
-        posterContainer.innerHTML = `<img src="${movie.poster}" alt="${movie.title}" class="w-full h-full object-cover rounded-lg">`;
+      if (movieData.poster || movie.poster) {
+        const posterUrl = movieData.poster || movie.poster;
+        const title = movieData.title || movie.title || 'Movie';
+        posterContainer.innerHTML = `<img src="${posterUrl}" alt="${title}" class="w-full h-full object-cover rounded-lg">`;
       }
 
       // Genres
       const genresContainer = document.getElementById('movieGenres');
-      if (movie.genres && movie.genres.length > 0) {
-        genresContainer.innerHTML = movie.genres.map(genre =>
+      const genres = movieData.genres || movie.genres;
+      if (genres && genres.length > 0) {
+        genresContainer.innerHTML = genres.map(genre =>
           `<span class="bg-gray-600 px-3 py-1 rounded-full text-sm">${genre}</span>`
         ).join('');
       }
 
       // Additional details
-      document.getElementById('movieReleaseDate').textContent = movie.released || 'N/A';
-      document.getElementById('movieLanguage').textContent = movie.language || 'N/A';
-      document.getElementById('movieCountry').textContent = movie.country || 'N/A';
-      document.getElementById('movieBudget').textContent = movie.budget ? `$${movie.budget.toLocaleString()}` : 'N/A';
-      document.getElementById('movieRevenue').textContent = movie.revenue ? `$${movie.revenue.toLocaleString()}` : 'N/A';
+      document.getElementById('movieReleaseDate').textContent = movieData.released || movie.released || 'N/A';
+      document.getElementById('movieLanguage').textContent = movieData.language || movie.language || 'N/A';
+      document.getElementById('movieCountry').textContent = movieData.country || movie.country || 'N/A';
+      document.getElementById('movieBudget').textContent = movieData.budget ? `$${movieData.budget.toLocaleString()}` : (movie.budget ? `$${movie.budget.toLocaleString()}` : 'N/A');
+      document.getElementById('movieRevenue').textContent = movieData.revenue ? `$${movieData.revenue.toLocaleString()}` : (movie.revenue ? `$${movie.revenue.toLocaleString()}` : 'N/A');
 
       // Statistics
-      document.getElementById('moviePopularity').textContent = movie.popularity || 'N/A';
-      document.getElementById('movieVoteCount').textContent = movie.votes || 'N/A';
-      document.getElementById('movieVoteAverage').textContent = movie.rating || 'N/A';
+      document.getElementById('moviePopularity').textContent = movieData.popularity || movie.popularity || 'N/A';
+      document.getElementById('movieVoteCount').textContent = movieData.votes || movie.votes || 'N/A';
+      document.getElementById('movieVoteAverage').textContent = movieData.rating || movie.rating || 'N/A';
 
       // Update watchlist button if user is logged in
       if (authToken) {
@@ -476,22 +499,32 @@ const { id } = Astro.params;
       }
 
       noSimilar.classList.add('hidden');
-      container.innerHTML = movies.map(movie => `
+      container.innerHTML = movies.map(movie => {
+        // Handle both cached and non-cached data structures
+        const movieData = movie.movie || movie;
+        const id = movie.id || movie.ids?.trakt || movieData.id || movieData.ids?.trakt;
+        const title = movieData.title || movie.title || 'Unknown Movie';
+        const year = movieData.year || movie.year || 'N/A';
+        const poster = movieData.poster || movie.poster;
+        const rating = movieData.rating || movie.rating;
+
+        return `
         <div class="bg-gray-50 rounded-lg overflow-hidden hover:shadow-md transition-shadow cursor-pointer"
-             onclick="window.location.href='/movie/${movie.id || movie.ids?.trakt}'">
+             onclick="window.location.href='/movie/${id}'">
           <div class="aspect-[2/3] bg-gray-200 relative">
-            ${movie.poster ?
-              `<img src="${movie.poster}" alt="${movie.title}" class="w-full h-full object-cover">` :
+            ${poster ?
+              `<img src="${poster}" alt="${title}" class="w-full h-full object-cover">` :
               `<div class="w-full h-full flex items-center justify-center text-gray-400 text-4xl">🎬</div>`
             }
-            ${movie.rating ? `<div class="absolute top-2 right-2 bg-yellow-500 text-black px-2 py-1 rounded text-xs font-bold">⭐ ${movie.rating}</div>` : ''}
+            ${rating ? `<div class="absolute top-2 right-2 bg-yellow-500 text-black px-2 py-1 rounded text-xs font-bold">⭐ ${rating}</div>` : ''}
           </div>
           <div class="p-3">
-            <h4 class="font-semibold text-sm mb-1 truncate">${movie.title || movie.movie?.title}</h4>
-            <p class="text-xs text-gray-600">${movie.year || movie.movie?.year || 'N/A'}</p>
+            <h4 class="font-semibold text-sm mb-1 truncate">${title}</h4>
+            <p class="text-xs text-gray-600">${year}</p>
           </div>
         </div>
-      `).join('');
+      `;
+      }).join('');
     }
 
     function displayComments(comments) {
@@ -558,8 +591,8 @@ const { id } = Astro.params;
                 <h4 class="font-semibold">${review.user?.username || 'Anonymous'}</h4>
                 <div class="flex items-center gap-2">
                   <div class="flex text-yellow-500">
-                    ${Array.from({length: 5}, (_, i) =>
-                      `<span class="text-sm">${i < Math.floor(review.rating / 2) ? '⭐' : '☆'}</span>`
+                    ${Array.from({length: 10}, (_, i) =>
+                      `<span class="text-sm">${i < review.rating ? '⭐' : '☆'}</span>`
                     ).join('')}
                   </div>
                   <span class="text-sm text-gray-500">${review.rating}/10</span>
@@ -611,7 +644,7 @@ const { id } = Astro.params;
               s.classList.remove('text-gray-300');
               s.classList.add('text-yellow-400');
             } else {
-              s.classList.remove('text-yellow-400');
+              s.classList.remove('text-yellow-400', 'text-yellow-500');
               s.classList.add('text-gray-300');
             }
           });
@@ -672,6 +705,9 @@ const { id } = Astro.params;
     function setRating(rating) {
       // Store the current rating
       document.getElementById('reviewRating').value = rating;
+      
+      // Update the current rating display
+      document.getElementById('currentRating').textContent = rating;
 
       // Update all stars based on the rating
       const ratingStars = document.querySelectorAll('#ratingContainer .rating-star');
@@ -732,7 +768,7 @@ const { id } = Astro.params;
         return;
       }
 
-      const rating = parseInt(document.getElementById('reviewRating').value) * 2; // Convert 1-5 to 1-10 scale
+      const rating = parseInt(document.getElementById('reviewRating').value); // Already 1-10 scale
       const title = document.getElementById('reviewTitle').value.trim();
       const text = document.getElementById('reviewText').value.trim();
 
