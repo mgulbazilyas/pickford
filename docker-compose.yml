@@ -42,7 +42,6 @@ services:
       LOG_LEVEL: "debug"
       NODE_OPTIONS: "--enable-source-maps"
     ports:
-      - "80:8080"
       - "8000:8080"
     depends_on:
       - backend
