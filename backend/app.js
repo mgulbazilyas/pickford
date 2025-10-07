@@ -243,6 +243,8 @@ app.post("/api/auth", async (req, res) => {
         return await handleLogout(req, res, data)
       case 'verify':
         return await handleVerify(req, res, data)
+      case 'refresh':
+        return await handleRefreshToken(req, res, data)
       default:
         return res.status(400).json({ error: 'Invalid action' })
     }
@@ -273,6 +275,27 @@ app.get("/api/auth", async (req, res) => {
     return res.status(200).json({ user })
   } catch (error) {
     return res.status(500).json({ error: error.message || 'Internal server error' })
+  }
+})
+
+// Refresh token endpoint
+app.post("/api/auth/refresh", async (req, res) => {
+  try {
+    const { refreshToken } = req.body
+
+    if (!refreshToken) {
+      return res.status(400).json({ error: 'Refresh token is required' })
+    }
+
+    const tokens = await AuthService.refreshAccessToken(refreshToken)
+
+    if (!tokens) {
+      return res.status(401).json({ error: 'Invalid or expired refresh token' })
+    }
+
+    return res.status(200).json(tokens)
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'Token refresh failed' })
   }
 })
 
@@ -455,8 +478,18 @@ app.put("/api/comments", async (req, res) => {
         return res.status(400).json({ error: 'Comment content must be less than 2000 characters' })
       }
 
+      const updated = await db.updateMovieComment(
+        new (require('mongodb').ObjectId)(commentId),
+        user._id,
+        { content: content.trim() }
+      )
+
+      if (!updated) {
+        return res.status(404).json({ error: 'Comment not found or you do not have permission to edit it' })
+      }
+
       return res.status(200).json({
-        message: 'Comment editing not yet implemented'
+        message: 'Comment updated successfully'
       })
     }
 
@@ -636,8 +669,14 @@ app.delete("/api/ratings", async (req, res) => {
       return res.status(404).json({ error: 'Rating not found' })
     }
 
+    const deleted = await db.deleteMovieRating(existingRating._id, user._id)
+
+    if (!deleted) {
+      return res.status(404).json({ error: 'Rating not found or you do not have permission to delete it' })
+    }
+
     return res.status(200).json({
-      message: 'Rating deletion not yet implemented'
+      message: 'Rating deleted successfully'
     })
   } catch (error) {
     return res.status(500).json({ error: error.message || 'Failed to delete rating' })
@@ -822,6 +861,485 @@ app.get("/api/logs", async (req, res) => {
   }
 })
 
+// Show Comments API endpoints
+app.get("/api/shows/comments", async (req, res) => {
+  try {
+    const { showId, userId } = req.query
+    const { limit, skip } = parseQueryParams(req.query)
+
+    if (!showId && !userId) {
+      return res.status(400).json({ error: 'Either showId or userId is required' })
+    }
+
+    let comments
+    let currentUserId = null
+
+    // Get current user if authenticated
+    const authHeader = req.get('authorization')
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.substring(7)
+      const authUser = await AuthService.verifySession(token)
+      if (authUser) {
+        currentUserId = authUser._id
+      }
+    }
+
+    if (showId) {
+      comments = await db.getShowComments(showId, limit, skip, currentUserId)
+    } else if (userId) {
+      if (!currentUserId || currentUserId.toString() !== userId) {
+        return res.status(401).json({ error: 'Authentication required to view user comments' })
+      }
+
+      comments = await db.getUserComments(new (require('mongodb').ObjectId)(userId), limit, skip)
+    }
+
+    return res.status(200).json(comments)
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'Failed to fetch comments' })
+  }
+})
+
+app.post("/api/shows/comments", async (req, res) => {
+  try {
+    const authHeader = req.get('authorization')
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Authorization header required' })
+    }
+
+    const token = authHeader.substring(7)
+    const user = await AuthService.verifySession(token)
+
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid or expired token' })
+    }
+
+    const { showId, content, isSpoiler = false } = req.body
+
+    if (!showId) {
+      return res.status(400).json({ error: 'Show ID is required' })
+    }
+
+    if (!content || content.trim().length === 0) {
+      return res.status(400).json({ error: 'Comment content is required' })
+    }
+
+    if (content.length > 2000) {
+      return res.status(400).json({ error: 'Comment content must be less than 2000 characters' })
+    }
+
+    const commentId = await db.createComment({
+      userId: user._id,
+      showId,
+      content: content.trim(),
+      isSpoiler,
+      type: 'show'
+    })
+
+    return res.status(201).json({
+      message: 'Comment created successfully',
+      commentId: commentId.toString()
+    })
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'Failed to create comment' })
+  }
+})
+
+app.put("/api/shows/comments", async (req, res) => {
+  try {
+    const authHeader = req.get('authorization')
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Authorization header required' })
+    }
+
+    const token = authHeader.substring(7)
+    const user = await AuthService.verifySession(token)
+
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid or expired token' })
+    }
+
+    const { commentId, action, content } = req.body
+
+    if (!commentId) {
+      return res.status(400).json({ error: 'Comment ID is required' })
+    }
+
+    if (action === 'toggleLike') {
+      const result = await db.updateCommentLikes(
+        new (require('mongodb').ObjectId)(commentId),
+        user._id
+      )
+
+      return res.status(200).json({
+        message: `Comment ${result.action} successfully`,
+        action: result.action,
+        likes: result.likes
+      })
+    }
+
+    if (content !== undefined) {
+      if (!content || content.trim().length === 0) {
+        return res.status(400).json({ error: 'Comment content is required' })
+      }
+
+      if (content.length > 2000) {
+        return res.status(400).json({ error: 'Comment content must be less than 2000 characters' })
+      }
+
+      const updated = await db.updateShowComment(
+        new (require('mongodb').ObjectId)(commentId),
+        user._id,
+        { content: content.trim() }
+      )
+
+      if (!updated) {
+        return res.status(404).json({ error: 'Comment not found or you do not have permission to edit it' })
+      }
+
+      return res.status(200).json({
+        message: 'Comment updated successfully'
+      })
+    }
+
+    return res.status(400).json({ error: 'Either action or content must be provided' })
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'Failed to update comment' })
+  }
+})
+
+app.delete("/api/shows/comments", async (req, res) => {
+  try {
+    const authHeader = req.get('authorization')
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Authorization header required' })
+    }
+
+    const token = authHeader.substring(7)
+    const user = await AuthService.verifySession(token)
+
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid or expired token' })
+    }
+
+    const commentId = req.query.commentId
+
+    if (!commentId) {
+      return res.status(400).json({ error: 'Comment ID is required' })
+    }
+
+    const deleted = await db.deleteShowComment(new (require('mongodb').ObjectId)(commentId), user._id)
+
+    if (!deleted) {
+      return res.status(404).json({ error: 'Comment not found or you do not have permission to delete it' })
+    }
+
+    return res.status(200).json({
+      message: 'Comment deleted successfully'
+    })
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'Failed to delete comment' })
+  }
+})
+
+// Show Ratings API endpoints
+app.get("/api/shows/ratings", async (req, res) => {
+  try {
+    const { showId, userId, includeAverage } = req.query
+    const { limit, skip } = parseQueryParams(req.query)
+
+    if (!showId && !userId) {
+      return res.status(400).json({ error: 'Either showId or userId is required' })
+    }
+
+    let result
+
+    if (showId) {
+      result = await db.getShowRatings(showId, limit, skip)
+
+      if (includeAverage === 'true') {
+        const average = await db.getAverageShowRating(showId)
+        result.average = average
+      }
+
+      const authHeader = req.get('authorization')
+      let authUser = null
+
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        const token = authHeader.substring(7)
+        authUser = await AuthService.verifySession(token)
+      }
+
+      if (authUser) {
+        const userRating = await db.getShowRating(showId, authUser._id)
+        result.userRating = userRating
+        if (includeAverage !== 'true') {
+          result.average = null
+        }
+      }
+    } else if (userId) {
+      const authHeader = req.get('authorization')
+      let authUser = null
+
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        const token = authHeader.substring(7)
+        authUser = await AuthService.verifySession(token)
+      }
+
+      if (!authUser || authUser._id.toString() !== userId) {
+        return res.status(401).json({ error: 'Authentication required to view user ratings' })
+      }
+
+      result = await db.getUserRatings(new (require('mongodb').ObjectId)(userId), limit, skip)
+    }
+
+    return res.status(200).json(result)
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'Failed to fetch ratings' })
+  }
+})
+
+app.post("/api/shows/ratings", async (req, res) => {
+  try {
+    const authHeader = req.get('authorization')
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Authorization header required' })
+    }
+
+    const token = authHeader.substring(7)
+    const user = await AuthService.verifySession(token)
+
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid or expired token' })
+    }
+
+    const { showId, rating, review } = req.body
+
+    if (!showId) {
+      return res.status(400).json({ error: 'Show ID is required' })
+    }
+
+    if (typeof rating !== 'number' || rating < 1 || rating > 10) {
+      return res.status(400).json({ error: 'Rating must be a number between 1 and 10' })
+    }
+
+    const existingRating = await db.getShowRating(showId, user._id)
+
+    if (existingRating) {
+      await db.updateShowRating(existingRating._id, {
+        rating,
+        review: review?.trim() || null,
+      })
+
+      return res.status(200).json({
+        message: 'Rating updated successfully',
+        ratingId: existingRating._id.toString()
+      })
+    } else {
+      const ratingId = await db.createRating({
+        userId: user._id,
+        showId,
+        rating,
+        review: review?.trim() || null,
+        type: 'show'
+      })
+
+      return res.status(201).json({
+        message: 'Rating created successfully',
+        ratingId: ratingId.toString()
+      })
+    }
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'Failed to create/update rating' })
+  }
+})
+
+app.delete("/api/shows/ratings", async (req, res) => {
+  try {
+    const authHeader = req.get('authorization')
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Authorization header required' })
+    }
+
+    const token = authHeader.substring(7)
+    const user = await AuthService.verifySession(token)
+
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid or expired token' })
+    }
+
+    const showId = req.query.showId
+
+    if (!showId) {
+      return res.status(400).json({ error: 'Show ID is required' })
+    }
+
+    const existingRating = await db.getShowRating(showId, user._id)
+    if (!existingRating) {
+      return res.status(404).json({ error: 'Rating not found' })
+    }
+
+    const deleted = await db.deleteShowRating(existingRating._id, user._id)
+
+    if (!deleted) {
+      return res.status(404).json({ error: 'Rating not found or you do not have permission to delete it' })
+    }
+
+    return res.status(200).json({
+      message: 'Rating deleted successfully'
+    })
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'Failed to delete rating' })
+  }
+})
+
+// Show Watchlist API endpoints
+app.get("/api/shows/watchlist", async (req, res) => {
+  try {
+    const authHeader = req.get('authorization')
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Authorization header required' })
+    }
+
+    const token = authHeader.substring(7)
+    const user = await AuthService.verifySession(token)
+
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid or expired token' })
+    }
+
+    const { limit, skip } = parseQueryParams(req.query)
+    const includeDetails = req.query.includeDetails === 'true'
+
+    let watchlist
+    if (includeDetails) {
+      watchlist = await db.getWatchlistWithDetails(user._id, limit, skip)
+    } else {
+      watchlist = await db.getWatchlist(user._id, limit, skip)
+    }
+
+    return res.status(200).json(watchlist)
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'Failed to fetch watchlist' })
+  }
+})
+
+app.post("/api/shows/watchlist", async (req, res) => {
+  try {
+    const authHeader = req.get('authorization')
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Authorization header required' })
+    }
+
+    const token = authHeader.substring(7)
+    const user = await AuthService.verifySession(token)
+
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid or expired token' })
+    }
+
+    const { showId, notes, priority = 'medium' } = req.body
+
+    if (!showId) {
+      return res.status(400).json({ error: 'Show ID is required' })
+    }
+
+    if (!['low', 'medium', 'high'].includes(priority)) {
+      return res.status(400).json({ error: 'Priority must be one of: low, medium, high' })
+    }
+
+    const alreadyInWatchlist = await db.isInShowWatchlist(user._id, showId)
+    if (alreadyInWatchlist) {
+      return res.status(409).json({ error: 'Show is already in watchlist' })
+    }
+
+    const watchlistItemId = await db.addToShowWatchlist(user._id, showId, notes, priority)
+
+    return res.status(201).json({
+      message: 'Show added to watchlist successfully',
+      watchlistItemId: watchlistItemId.toString()
+    })
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'Failed to add show to watchlist' })
+  }
+})
+
+app.put("/api/shows/watchlist", async (req, res) => {
+  try {
+    const authHeader = req.get('authorization')
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Authorization header required' })
+    }
+
+    const token = authHeader.substring(7)
+    const user = await AuthService.verifySession(token)
+
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid or expired token' })
+    }
+
+    const { showId, notes, priority } = req.body
+
+    if (!showId) {
+      return res.status(400).json({ error: 'Show ID is required' })
+    }
+
+    if (!notes && !priority) {
+      return res.status(400).json({ error: 'At least one field (notes or priority) must be provided' })
+    }
+
+    if (priority && !['low', 'medium', 'high'].includes(priority)) {
+      return res.status(400).json({ error: 'Priority must be one of: low, medium, high' })
+    }
+
+    const updates = {}
+    if (notes !== undefined) updates.notes = notes
+    if (priority !== undefined) updates.priority = priority
+
+    const updated = await db.updateShowWatchlistItem(user._id, showId, updates)
+
+    if (!updated) {
+      return res.status(404).json({ error: 'Show not found in watchlist' })
+    }
+
+    return res.status(200).json({ message: 'Watchlist item updated successfully' })
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'Failed to update watchlist item' })
+  }
+})
+
+app.delete("/api/shows/watchlist", async (req, res) => {
+  try {
+    const authHeader = req.get('authorization')
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Authorization header required' })
+    }
+
+    const token = authHeader.substring(7)
+    const user = await AuthService.verifySession(token)
+
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid or expired token' })
+    }
+
+    const showId = req.query.showId
+
+    if (!showId) {
+      return res.status(400).json({ error: 'Show ID is required' })
+    }
+
+    const removed = await db.removeFromShowWatchlist(user._id, showId)
+
+    if (!removed) {
+      return res.status(404).json({ error: 'Show not found in watchlist' })
+    }
+
+    return res.status(200).json({ message: 'Show removed from watchlist successfully' })
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'Failed to remove show from watchlist' })
+  }
+})
+
 // Helper functions for auth handlers
 async function handleRegister(req, res, data) {
   try {
@@ -855,9 +1373,9 @@ async function handleRegister(req, res, data) {
       lastName: lastName || ''
     })
 
-    const token = await AuthService.createSession(user._id)
+    const tokens = await AuthService.createSession(user._id)
 
-    return res.status(201).json({ user, token })
+    return res.status(201).json({ user, ...tokens })
   } catch (error) {
     console.error('[handleRegister] Error:', error)
     return res.status(500).json({ error: error.message || 'Registration failed' })
@@ -883,9 +1401,9 @@ async function handleLogin(req, res, data) {
       return res.status(401).json({ error: 'Invalid email or password' })
     }
 
-    const token = await AuthService.createSession(user._id)
+    const tokens = await AuthService.createSession(user._id)
 
-    return res.status(200).json({ user, token })
+    return res.status(200).json({ user, ...tokens })
   } catch (error) {
     console.error('[handleLogin] Error:', error)
     return res.status(500).json({ error: error.message || 'Login failed' })
@@ -937,6 +1455,32 @@ async function handleVerify(req, res, data) {
   } catch (error) {
     console.error('[handleVerify] Error:', error)
     return res.status(500).json({ error: error.message || 'Token verification failed' })
+  }
+}
+
+async function handleRefreshToken(req, res, data) {
+  try {
+    // Ensure database is connected
+    if (!db.isConnected) {
+      await db.connect()
+    }
+
+    const { refreshToken } = data
+
+    if (!refreshToken) {
+      return res.status(400).json({ error: 'Refresh token is required' })
+    }
+
+    const tokens = await AuthService.refreshAccessToken(refreshToken)
+
+    if (!tokens) {
+      return res.status(401).json({ error: 'Invalid or expired refresh token' })
+    }
+
+    return res.status(200).json(tokens)
+  } catch (error) {
+    console.error('[handleRefreshToken] Error:', error)
+    return res.status(500).json({ error: error.message || 'Token refresh failed' })
   }
 }
 

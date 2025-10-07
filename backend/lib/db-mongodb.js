@@ -91,9 +91,9 @@ class Database {
     return { ratingsCount, commentsCount }
   }
 
-  // Movie comments
-  async createMovieComment(commentData) {
-    const comments = this.db.collection('movie_comments')
+  // Comments (works for both movies and shows)
+  async createComment(commentData) {
+    const comments = this.db.collection('comments')
     const result = await comments.insertOne({
       ...commentData,
       likes: 0,
@@ -104,17 +104,24 @@ class Database {
     return result.insertedId
   }
 
-  async getMovieComments(movieId, limit = 20, skip = 0, currentUserId = null) {
-    const comments = this.db.collection('movie_comments')
+  async createMovieComment(commentData) {
+    // Legacy method - delegates to generic method
+    return await this.createComment({ ...commentData, type: 'movie' })
+  }
+
+  async getComments(contentType, contentId, limit = 20, skip = 0, currentUserId = null) {
+    const comments = this.db.collection('comments')
     const users = this.db.collection('users')
-    
-    const cursor = comments.find({ movieId })
+
+    const query = contentType === 'movie' ? { movieId: contentId } : { showId: contentId }
+
+    const cursor = comments.find(query)
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit)
 
     const commentsArray = await cursor.toArray()
-    
+
     // Fetch user information for each comment
     const commentsWithUsers = await Promise.all(
       commentsArray.map(async (comment) => {
@@ -122,7 +129,7 @@ class Database {
           { _id: new ObjectId(comment.userId) },
           { projection: { _id: 1, username: 1, firstName: 1, lastName: 1 } }
         )
-        
+
         // Check if current user has liked this comment
         let isLikedByCurrentUser = false
         if (currentUserId) {
@@ -130,7 +137,7 @@ class Database {
             likedUserId => likedUserId.toString() === currentUserId.toString()
           )
         }
-        
+
         return {
           ...comment,
           user: user ? {
@@ -143,8 +150,8 @@ class Database {
         }
       })
     )
-    
-    const totalCount = await comments.countDocuments({ movieId })
+
+    const totalCount = await comments.countDocuments(query)
 
     return {
       comments: commentsWithUsers,
@@ -157,8 +164,16 @@ class Database {
     }
   }
 
+  async getMovieComments(movieId, limit = 20, skip = 0, currentUserId = null) {
+    return await this.getComments('movie', movieId, limit, skip, currentUserId)
+  }
+
+  async getShowComments(showId, limit = 20, skip = 0, currentUserId = null) {
+    return await this.getComments('show', showId, limit, skip, currentUserId)
+  }
+
   async getUserComments(userId, limit = 20, skip = 0) {
-    const comments = this.db.collection('movie_comments')
+    const comments = this.db.collection('comments')
     const cursor = comments.find({ userId: new ObjectId(userId) })
       .sort({ createdAt: -1 })
       .skip(skip)
@@ -179,7 +194,7 @@ class Database {
   }
 
   async updateCommentLikes(commentId, userId) {
-    const comments = this.db.collection('movie_comments')
+    const comments = this.db.collection('comments')
     
     // First check if user has already liked this comment
     const comment = await comments.findOne({ _id: new ObjectId(commentId) })
@@ -214,8 +229,8 @@ class Database {
     }
   }
 
-  async deleteMovieComment(commentId, userId) {
-    const comments = this.db.collection('movie_comments')
+  async deleteComment(commentId, userId) {
+    const comments = this.db.collection('comments')
     const result = await comments.deleteOne({
       _id: new ObjectId(commentId),
       userId: new ObjectId(userId)
@@ -224,9 +239,47 @@ class Database {
     return result.deletedCount > 0
   }
 
-  // Movie ratings
-  async createMovieRating(ratingData) {
-    const ratings = this.db.collection('movie_ratings')
+  async deleteMovieComment(commentId, userId) {
+    // Legacy method - delegates to generic method
+    return await this.deleteComment(commentId, userId)
+  }
+
+  async deleteShowComment(commentId, userId) {
+    // Legacy method - delegates to generic method
+    return await this.deleteComment(commentId, userId)
+  }
+
+  async updateComment(commentId, userId, updates) {
+    const comments = this.db.collection('comments')
+    const result = await comments.updateOne(
+      {
+        _id: new ObjectId(commentId),
+        userId: new ObjectId(userId)
+      },
+      {
+        $set: {
+          ...updates,
+          updatedAt: new Date()
+        }
+      }
+    )
+
+    return result.modifiedCount > 0
+  }
+
+  async updateMovieComment(commentId, userId, updates) {
+    // Legacy method - delegates to generic method
+    return await this.updateComment(commentId, userId, updates)
+  }
+
+  async updateShowComment(commentId, userId, updates) {
+    // Legacy method - delegates to generic method
+    return await this.updateComment(commentId, userId, updates)
+  }
+
+  // Ratings (works for both movies and shows)
+  async createRating(ratingData) {
+    const ratings = this.db.collection('ratings')
     const result = await ratings.insertOne({
       ...ratingData,
       createdAt: new Date(),
@@ -235,17 +288,24 @@ class Database {
     return result.insertedId
   }
 
-  async getMovieRatings(movieId, limit = 20, skip = 0) {
-    const ratings = this.db.collection('movie_ratings')
+  async createMovieRating(ratingData) {
+    // Legacy method - delegates to generic method
+    return await this.createRating({ ...ratingData, type: 'movie' })
+  }
+
+  async getRatings(contentType, contentId, limit = 20, skip = 0) {
+    const ratings = this.db.collection('ratings')
     const users = this.db.collection('users')
-    
-    const cursor = ratings.find({ movieId })
+
+    const query = contentType === 'movie' ? { movieId: contentId } : { showId: contentId }
+
+    const cursor = ratings.find(query)
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit)
 
     const ratingsArray = await cursor.toArray()
-    
+
     // Fetch user information for each rating
     const ratingsWithUsers = await Promise.all(
       ratingsArray.map(async (rating) => {
@@ -253,7 +313,7 @@ class Database {
           { _id: new ObjectId(rating.userId) },
           { projection: { _id: 1, username: 1, firstName: 1, lastName: 1 } }
         )
-        
+
         return {
           ...rating,
           user: user ? {
@@ -265,8 +325,8 @@ class Database {
         }
       })
     )
-    
-    const totalCount = await ratings.countDocuments({ movieId })
+
+    const totalCount = await ratings.countDocuments(query)
 
     return {
       ratings: ratingsWithUsers,
@@ -279,8 +339,16 @@ class Database {
     }
   }
 
+  async getMovieRatings(movieId, limit = 20, skip = 0) {
+    return await this.getRatings('movie', movieId, limit, skip)
+  }
+
+  async getShowRatings(showId, limit = 20, skip = 0) {
+    return await this.getRatings('show', showId, limit, skip)
+  }
+
   async getUserRatings(userId, limit = 20, skip = 0) {
-    const ratings = this.db.collection('movie_ratings')
+    const ratings = this.db.collection('ratings')
     const cursor = ratings.find({ userId: new ObjectId(userId) })
       .sort({ createdAt: -1 })
       .skip(skip)
@@ -300,18 +368,27 @@ class Database {
     }
   }
 
-  async getMovieRating(movieId, userId) {
-    const ratings = this.db.collection('movie_ratings')
-    return await ratings.findOne({
-      movieId,
-      userId: new ObjectId(userId)
-    })
+  async getRating(contentType, contentId, userId) {
+    const ratings = this.db.collection('ratings')
+    const query = contentType === 'movie'
+      ? { movieId: contentId, userId: new ObjectId(userId) }
+      : { showId: contentId, userId: new ObjectId(userId) }
+    return await ratings.findOne(query)
   }
 
-  async getAverageMovieRating(movieId) {
-    const ratings = this.db.collection('movie_ratings')
+  async getMovieRating(movieId, userId) {
+    return await this.getRating('movie', movieId, userId)
+  }
+
+  async getShowRating(showId, userId) {
+    return await this.getRating('show', showId, userId)
+  }
+
+  async getAverageRating(contentType, contentId) {
+    const ratings = this.db.collection('ratings')
+    const query = contentType === 'movie' ? { movieId: contentId } : { showId: contentId }
     const pipeline = [
-      { $match: { movieId } },
+      { $match: query },
       { $group: { _id: null, average: { $avg: '$rating' }, count: { $sum: 1 } } }
     ]
 
@@ -319,8 +396,16 @@ class Database {
     return result.length > 0 ? result[0].average : null
   }
 
-  async updateMovieRating(ratingId, updates) {
-    const ratings = this.db.collection('movie_ratings')
+  async getAverageMovieRating(movieId) {
+    return await this.getAverageRating('movie', movieId)
+  }
+
+  async getAverageShowRating(showId) {
+    return await this.getAverageRating('show', showId)
+  }
+
+  async updateRating(ratingId, updates) {
+    const ratings = this.db.collection('ratings')
     const result = await ratings.updateOne(
       { _id: new ObjectId(ratingId) },
       {
@@ -334,18 +419,61 @@ class Database {
     return result.modifiedCount > 0
   }
 
-  // Watchlist
-  async addToWatchlist(userId, movieId, notes = null, priority = 'medium') {
+  async updateMovieRating(ratingId, updates) {
+    return await this.updateRating(ratingId, updates)
+  }
+
+  async updateShowRating(ratingId, updates) {
+    return await this.updateRating(ratingId, updates)
+  }
+
+  async deleteRating(ratingId, userId) {
+    const ratings = this.db.collection('ratings')
+    const result = await ratings.deleteOne({
+      _id: new ObjectId(ratingId),
+      userId: new ObjectId(userId)
+    })
+
+    return result.deletedCount > 0
+  }
+
+  async deleteMovieRating(ratingId, userId) {
+    return await this.deleteRating(ratingId, userId)
+  }
+
+  async deleteShowRating(ratingId, userId) {
+    return await this.deleteRating(ratingId, userId)
+  }
+
+  // Watchlist (works for both movies and shows)
+  async addToWatchlist(userId, contentType, contentId, notes = null, priority = 'medium') {
     const watchlist = this.db.collection('watchlist')
-    const result = await watchlist.insertOne({
+    const data = {
       userId: new ObjectId(userId),
-      movieId,
       notes: notes || '',
       priority,
       createdAt: new Date(),
       updatedAt: new Date()
-    })
+    }
+
+    if (contentType === 'movie') {
+      data.movieId = contentId
+    } else if (contentType === 'show') {
+      data.showId = contentId
+    }
+
+    const result = await watchlist.insertOne(data)
     return result.insertedId
+  }
+
+  async addToMovieWatchlist(userId, movieId, notes = null, priority = 'medium') {
+    // Legacy method - delegates to generic method
+    return await this.addToWatchlist(userId, 'movie', movieId, notes, priority)
+  }
+
+  async addToShowWatchlist(userId, showId, notes = null, priority = 'medium') {
+    // Legacy method - delegates to generic method
+    return await this.addToWatchlist(userId, 'show', showId, notes, priority)
   }
 
   async getWatchlist(userId, limit = 20, skip = 0) {
@@ -368,28 +496,104 @@ class Database {
     }
   }
 
-  async getWatchlistWithMovieDetails(userId, limit = 20, skip = 0) {
-    // This is a simplified version - you might want to enhance this with actual movie details
+  async getWatchlistWithDetails(userId, limit = 20, skip = 0) {
     const watchlist = await this.getWatchlist(userId, limit, skip)
-    return watchlist
+
+    if (!watchlist.watchlist || watchlist.watchlist.length === 0) {
+      return watchlist
+    }
+
+    // Get details from Trakt API for each watchlist item
+    const BASE_URL = process.env.TRAKT_BASE_URL || "https://api.trakt.tv"
+    const TRAKT_CLIENT_ID = process.env.TRAKT_CLIENT_ID
+    const TRAKT_API_VERSION = process.env.TRAKT_API_VERSION || "2"
+
+    if (!TRAKT_CLIENT_ID) {
+      // Return basic watchlist if Trakt client ID is not configured
+      return watchlist
+    }
+
+    const watchlistWithDetails = await Promise.all(
+      watchlist.watchlist.map(async (item) => {
+        try {
+          let url, contentDetails
+
+          if (item.movieId) {
+            url = `${BASE_URL}/movies/${item.movieId}?extended=full`
+          } else if (item.showId) {
+            url = `${BASE_URL}/shows/${item.showId}?extended=full`
+          }
+
+          const response = await fetch(url, {
+            headers: {
+              "Content-Type": "application/json",
+              "trakt-api-key": TRAKT_CLIENT_ID,
+              "trakt-api-version": TRAKT_API_VERSION
+            }
+          })
+
+          if (response.ok) {
+            contentDetails = await response.json()
+            if (item.movieId) {
+              return { ...item, movie: contentDetails }
+            } else if (item.showId) {
+              return { ...item, show: contentDetails }
+            }
+          } else {
+            return item
+          }
+        } catch (error) {
+          const id = item.movieId || item.showId
+          console.error(`Failed to fetch details for ${id}:`, error)
+          return item
+        }
+      })
+    )
+
+    return {
+      ...watchlist,
+      watchlist: watchlistWithDetails
+    }
   }
 
-  async isInWatchlist(userId, movieId) {
+  async isInWatchlist(userId, contentType, contentId) {
     const watchlist = this.db.collection('watchlist')
-    const item = await watchlist.findOne({
-      userId: new ObjectId(userId),
-      movieId
-    })
+    const query = {
+      userId: new ObjectId(userId)
+    }
+
+    if (contentType === 'movie') {
+      query.movieId = contentId
+    } else if (contentType === 'show') {
+      query.showId = contentId
+    }
+
+    const item = await watchlist.findOne(query)
     return item !== null
   }
 
-  async updateWatchlistItem(userId, movieId, updates) {
+  async isInMovieWatchlist(userId, movieId) {
+    return await this.isInWatchlist(userId, 'movie', movieId)
+  }
+
+  async isInShowWatchlist(userId, showId) {
+    return await this.isInWatchlist(userId, 'show', showId)
+  }
+
+  async updateWatchlistItem(userId, contentType, contentId, updates) {
     const watchlist = this.db.collection('watchlist')
+    const query = {
+      userId: new ObjectId(userId)
+    }
+
+    if (contentType === 'movie') {
+      query.movieId = contentId
+    } else if (contentType === 'show') {
+      query.showId = contentId
+    }
+
     const result = await watchlist.updateOne(
-      {
-        userId: new ObjectId(userId),
-        movieId
-      },
+      query,
       {
         $set: {
           ...updates,
@@ -401,14 +605,36 @@ class Database {
     return result.modifiedCount > 0
   }
 
-  async removeFromWatchlist(userId, movieId) {
-    const watchlist = this.db.collection('watchlist')
-    const result = await watchlist.deleteOne({
-      userId: new ObjectId(userId),
-      movieId
-    })
+  async updateMovieWatchlistItem(userId, movieId, updates) {
+    return await this.updateWatchlistItem(userId, 'movie', movieId, updates)
+  }
 
+  async updateShowWatchlistItem(userId, showId, updates) {
+    return await this.updateWatchlistItem(userId, 'show', showId, updates)
+  }
+
+  async removeFromWatchlist(userId, contentType, contentId) {
+    const watchlist = this.db.collection('watchlist')
+    const query = {
+      userId: new ObjectId(userId)
+    }
+
+    if (contentType === 'movie') {
+      query.movieId = contentId
+    } else if (contentType === 'show') {
+      query.showId = contentId
+    }
+
+    const result = await watchlist.deleteOne(query)
     return result.deletedCount > 0
+  }
+
+  async removeFromMovieWatchlist(userId, movieId) {
+    return await this.removeFromWatchlist(userId, 'movie', movieId)
+  }
+
+  async removeFromShowWatchlist(userId, showId) {
+    return await this.removeFromWatchlist(userId, 'show', showId)
   }
 
   // Sessions
@@ -423,8 +649,9 @@ class Database {
     const users = this.db.collection('users')
 
     const session = await sessions.findOne({
-      token,
-      expiresAt: { $gt: new Date() }
+      accessToken: token,
+      accessExpiresAt: { $gt: new Date() },
+      isActive: true
     })
 
     if (!session) return null
@@ -433,9 +660,47 @@ class Database {
     return user
   }
 
+  async findSessionByRefreshToken(refreshToken) {
+    const sessions = this.db.collection('sessions')
+    return await sessions.findOne({
+      refreshToken,
+      refreshExpiresAt: { $gt: new Date() },
+      isActive: true
+    })
+  }
+
+  async updateSessionAccessToken(sessionId, newAccessToken, newAccessExpiresAt) {
+    const sessions = this.db.collection('sessions')
+    const result = await sessions.updateOne(
+      { _id: new ObjectId(sessionId) },
+      {
+        $set: {
+          accessToken: newAccessToken,
+          accessExpiresAt: newAccessExpiresAt,
+          updatedAt: new Date()
+        }
+      }
+    )
+    return result.modifiedCount > 0
+  }
+
   async destroySession(token) {
     const sessions = this.db.collection('sessions')
-    const result = await sessions.deleteOne({ token })
+    const result = await sessions.deleteOne({ accessToken: token })
+    return result.deletedCount > 0
+  }
+
+  async destroySessionByRefreshToken(refreshToken) {
+    const sessions = this.db.collection('sessions')
+    const result = await sessions.deleteOne({ refreshToken })
+    return result.deletedCount > 0
+  }
+
+  async destroyAllUserSessions(userId) {
+    const sessions = this.db.collection('sessions')
+    const result = await sessions.deleteMany({
+      userId: new ObjectId(userId)
+    })
     return result.deletedCount > 0
   }
 

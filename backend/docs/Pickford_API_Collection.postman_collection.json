@@ -1,0 +1,1800 @@
+{
+	"info": {
+		"_postman_id": "pickford-backend-api",
+		"name": "Pickford Backend API",
+		"description": "Complete API collection for Pickford backend application including enhanced JWT authentication with refresh tokens, user profiles, movies/shows, watchlist, comments, and ratings endpoints.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Authentication",
+			"item": [
+				{
+					"name": "Register User",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201) {",
+									"    const response = pm.response.json();",
+									"    pm.collectionVariables.set('authToken', response.accessToken);",
+									"    pm.collectionVariables.set('refreshToken', response.refreshToken);",
+									"    pm.collectionVariables.set('userId', response.user._id);",
+									"    pm.collectionVariables.set('userEmail', response.user.email);",
+									"    pm.collectionVariables.set('username', response.user.username);",
+									"    console.log('Tokens set: Access=' + response.accessToken?.substring(0, 20) + '...', ' + 'Refresh=' + response.refreshToken?.substring(0, 20) + '...');",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"action\": \"register\",\n  \"email\": \"testuser@example.com\",\n  \"username\": \"testuser\",\n  \"password\": \"password123\",\n  \"firstName\": \"Test\",\n  \"lastName\": \"User\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/auth",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"auth"
+							]
+						},
+						"description": "Register a new user account (returns both access and refresh tokens)"
+					},
+					"response": []
+				},
+				{
+					"name": "Login User",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    const response = pm.response.json();",
+									"    pm.collectionVariables.set('authToken', response.accessToken);",
+									"    pm.collectionVariables.set('refreshToken', response.refreshToken);",
+									"    pm.collectionVariables.set('userId', response.user._id);",
+									"    pm.collectionVariables.set('userEmail', response.user.email);",
+									"    pm.collectionVariables.set('username', response.user.username);",
+									"    console.log('Tokens updated: Access=' + response.accessToken?.substring(0, 20) + '...', ' + 'Refresh=' + response.refreshToken?.substring(0, 20) + '...');",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"action\": \"login\",\n  \"email\": \"{{userEmail}}\",\n  \"password\": \"password123\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/auth",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"auth"
+							]
+						},
+						"description": "Login with existing user credentials (returns both access and refresh tokens)"
+					},
+					"response": []
+				},
+				{
+					"name": "Refresh Access Token (Dedicated Endpoint)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    const response = pm.response.json();",
+									"    pm.collectionVariables.set('authToken', response.accessToken);",
+									"    console.log('Access token refreshed: ' + response.accessToken?.substring(0, 20) + '...');",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/auth/refresh",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"auth",
+								"refresh"
+							]
+						},
+						"description": "Refresh access token using refresh token (7-day access token, 90-day refresh token)"
+					},
+					"response": []
+				},
+				{
+					"name": "Refresh Access Token (Action Method)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    const response = pm.response.json();",
+									"    pm.collectionVariables.set('authToken', response.accessToken);",
+									"    console.log('Access token refreshed via action: ' + response.accessToken?.substring(0, 20) + '...');",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"action\": \"refresh\",\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/auth",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"auth"
+							]
+						},
+						"description": "Alternative method to refresh access token using action parameter"
+					},
+					"response": []
+				},
+				{
+					"name": "Verify Token (GET)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/auth?action=verify",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"auth"
+							],
+							"query": [
+								{
+									"key": "action",
+									"value": "verify"
+								}
+							]
+						},
+						"description": "Verify JWT access token validity"
+					},
+					"response": []
+				},
+				{
+					"name": "Verify Token (POST)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"action\": \"verify\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/auth",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"auth"
+							]
+						},
+						"description": "Verify JWT access token validity (POST method)"
+					},
+					"response": []
+				},
+				{
+					"name": "Logout User",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"action\": \"logout\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/auth",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"auth"
+							]
+						},
+						"description": "Logout and invalidate access token"
+					},
+					"response": []
+				}
+			],
+			"description": "Enhanced authentication with JWT access tokens (7 days) and refresh tokens (90 days)"
+		},
+		{
+			"name": "User Profile",
+			"item": [
+				{
+					"name": "Get User Profile",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/user/profile",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"user",
+								"profile"
+							]
+						},
+						"description": "Get current user profile with statistics"
+					},
+					"response": []
+				},
+				{
+					"name": "Update User Profile",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"firstName\": \"Updated\",\n  \"lastName\": \"Name\",\n  \"bio\": \"Updated user biography\",\n  \"avatar\": \"https://example.com/avatar.jpg\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/user/profile",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"user",
+								"profile"
+							]
+						},
+						"description": "Update user profile information"
+					},
+					"response": []
+				}
+			],
+			"description": "User profile management endpoints"
+		},
+		{
+			"name": "Movies & Shows",
+			"item": [
+				{
+					"name": "Get Movie Details",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/trakt-new/movies/1390?extended=full",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"trakt-new",
+								"movies",
+								"1390"
+							],
+							"query": [
+								{
+									"key": "extended",
+									"value": "full"
+								}
+							]
+						},
+						"description": "Get detailed information about a specific movie (with caching)"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Show Details",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/trakt-new/shows/1?extended=full",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"trakt-new",
+								"shows",
+								"1"
+							],
+							"query": [
+								{
+									"key": "extended",
+									"value": "full"
+								}
+							]
+						},
+						"description": "Get detailed information about a specific TV show (with caching)"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Season Details",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/trakt-new/shows/1/seasons/1?extended=full",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"trakt-new",
+								"shows",
+								"1",
+								"seasons",
+								"1"
+							],
+							"query": [
+								{
+									"key": "extended",
+									"value": "full"
+								}
+							]
+						},
+						"description": "Get detailed information about a specific season (with caching)"
+					},
+					"response": []
+				},
+				{
+					"name": "Search Movies",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/trakt-new/search/movie?query=inception&extended=full&limit=10",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"trakt-new",
+								"search",
+								"movie"
+							],
+							"query": [
+								{
+									"key": "query",
+									"value": "inception"
+								},
+								{
+									"key": "extended",
+									"value": "full"
+								},
+								{
+									"key": "limit",
+									"value": "10"
+								}
+							]
+						},
+						"description": "Search for movies by title (with caching)"
+					},
+					"response": []
+				},
+				{
+					"name": "Search Shows",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/trakt-new/search/show?query=breaking%20bad&extended=full&limit=10",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"trakt-new",
+								"search",
+								"show"
+							],
+							"query": [
+								{
+									"key": "query",
+									"value": "breaking bad"
+								},
+								{
+									"key": "extended",
+									"value": "full"
+								},
+								{
+									"key": "limit",
+									"value": "10"
+								}
+							]
+						},
+						"description": "Search for TV shows by title (with caching)"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Trending Movies",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/trakt-new/movies/trending?extended=full&limit=10",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"trakt-new",
+								"movies",
+								"trending"
+							],
+							"query": [
+								{
+									"key": "extended",
+									"value": "full"
+								},
+								{
+									"key": "limit",
+									"value": "10"
+								}
+							]
+						},
+						"description": "Get trending movies (with caching)"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Popular Movies",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/trakt-new/movies/popular?extended=full&limit=10",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"trakt-new",
+								"movies",
+								"popular"
+							],
+							"query": [
+								{
+									"key": "extended",
+									"value": "full"
+								},
+								{
+									"key": "limit",
+									"value": "10"
+								}
+							]
+						},
+						"description": "Get popular movies (with caching)"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Trending Shows",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/trakt-new/shows/trending?extended=full&limit=10",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"trakt-new",
+								"shows",
+								"trending"
+							],
+							"query": [
+								{
+									"key": "extended",
+									"value": "full"
+								},
+								{
+									"key": "limit",
+									"value": "10"
+								}
+							]
+						},
+						"description": "Get trending TV shows (with caching)"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Popular Shows",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/trakt-new/shows/popular?extended=full&limit=10",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"trakt-new",
+								"shows",
+								"popular"
+							],
+							"query": [
+								{
+									"key": "extended",
+									"value": "full"
+								},
+								{
+									"key": "limit",
+									"value": "10"
+								}
+							]
+						},
+						"description": "Get popular TV shows (with caching)"
+					},
+					"response": []
+				}
+			],
+			"description": "Movie and TV show data from Trakt API with MongoDB caching"
+		},
+		{
+			"name": "Movies Watchlist",
+			"item": [
+				{
+					"name": "Get Watchlist (Basic)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/watchlist?limit=10&skip=0",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"watchlist"
+							],
+							"query": [
+								{
+									"key": "limit",
+									"value": "10"
+								},
+								{
+									"key": "skip",
+									"value": "0"
+								}
+							]
+						},
+						"description": "Get user's watchlist without content details (supports both movies and shows)"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Watchlist (With Details)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/watchlist?includeDetails=true&limit=10&skip=0",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"watchlist"
+							],
+							"query": [
+								{
+									"key": "includeDetails",
+									"value": "true"
+								},
+								{
+									"key": "limit",
+									"value": "10"
+								},
+								{
+									"key": "skip",
+									"value": "0"
+								}
+							]
+						},
+						"description": "Get user's watchlist with full content details from Trakt API"
+					},
+					"response": []
+				},
+				{
+					"name": "Add Movie to Watchlist",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201) {",
+									"    const response = pm.response.json();",
+									"    pm.collectionVariables.set('watchlistItemId', response.watchlistItemId);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"movieId\": \"1390\",\n  \"notes\": \"Looking forward to watching this movie\",\n  \"priority\": \"high\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/watchlist",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"watchlist"
+							]
+						},
+						"description": "Add a movie to user's watchlist"
+					},
+					"response": []
+				},
+				{
+					"name": "Update Watchlist Item",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"movieId\": \"1390\",\n  \"notes\": \"Updated notes about this movie\",\n  \"priority\": \"medium\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/watchlist",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"watchlist"
+							]
+						},
+						"description": "Update watchlist item notes or priority for movies"
+					},
+					"response": []
+				},
+				{
+					"name": "Remove Movie from Watchlist",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/watchlist?movieId=1390",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"watchlist"
+							],
+							"query": [
+								{
+									"key": "movieId",
+									"value": "1390"
+								}
+							]
+						},
+						"description": "Remove a movie from user's watchlist"
+					},
+					"response": []
+				}
+			],
+			"description": "Movie watchlist management endpoints"
+		},
+		{
+			"name": "Shows Watchlist",
+			"item": [
+				{
+					"name": "Get Shows Watchlist",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/shows/watchlist?includeDetails=true&limit=10&skip=0",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"shows",
+								"watchlist"
+							],
+							"query": [
+								{
+									"key": "includeDetails",
+									"value": "true"
+								},
+								{
+									"key": "limit",
+									"value": "10"
+								},
+								{
+									"key": "skip",
+									"value": "0"
+								}
+							]
+						},
+						"description": "Get shows watchlist with full details from Trakt API"
+					},
+					"response": []
+				},
+				{
+					"name": "Add Show to Watchlist",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201) {",
+									"    const response = pm.response.json();",
+									"    pm.collectionVariables.set('showWatchlistItemId', response.watchlistItemId);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"showId\": \"1\",\n  \"notes\": \"Can't wait to binge this show\",\n  \"priority\": \"high\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/shows/watchlist",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"shows",
+								"watchlist"
+							]
+						},
+						"description": "Add a TV show to user's watchlist"
+					},
+					"response": []
+				},
+				{
+					"name": "Update Show Watchlist Item",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"showId\": \"1\",\n  \"notes\": \"Updated notes about this show\",\n  \"priority\": \"medium\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/shows/watchlist",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"shows",
+								"watchlist"
+							]
+						},
+						"description": "Update show watchlist item notes or priority"
+					},
+					"response": []
+				},
+				{
+					"name": "Remove Show from Watchlist",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/shows/watchlist?showId=1",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"shows",
+								"watchlist"
+							],
+							"query": [
+								{
+									"key": "showId",
+									"value": "1"
+								}
+							]
+						},
+						"description": "Remove a TV show from user's watchlist"
+					},
+					"response": []
+				}
+			],
+			"description": "TV show watchlist management endpoints"
+		},
+		{
+			"name": "Movies Comments",
+			"item": [
+				{
+					"name": "Get Movie Comments",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/comments?movieId=1390&limit=10&skip=0",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"comments"
+							],
+							"query": [
+								{
+									"key": "movieId",
+									"value": "1390"
+								},
+								{
+									"key": "limit",
+									"value": "10"
+								},
+								{
+									"key": "skip",
+									"value": "0"
+								}
+							]
+						},
+						"description": "Get comments for a specific movie"
+					},
+					"response": []
+				},
+				{
+					"name": "Get User Comments",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/comments?userId={{userId}}&limit=10&skip=0",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"comments"
+							],
+							"query": [
+								{
+									"key": "userId",
+									"value": "{{userId}}"
+								},
+								{
+									"key": "limit",
+									"value": "10"
+								},
+								{
+									"key": "skip",
+									"value": "0"
+								}
+							]
+						},
+						"description": "Get comments made by current user"
+					},
+					"response": []
+				},
+				{
+					"name": "Create Movie Comment",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201) {",
+									"    const response = pm.response.json();",
+									"    pm.collectionVariables.set('movieCommentId', response.commentId);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"movieId\": \"1390\",\n  \"content\": \"This movie was absolutely fantastic! Great acting and storyline.\",\n  \"isSpoiler\": false\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/comments",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"comments"
+							]
+						},
+						"description": "Create a new comment for a movie"
+					},
+					"response": []
+				},
+				{
+					"name": "Like Movie Comment",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"commentId\": \"{{movieCommentId}}\",\n  \"action\": \"toggleLike\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/comments",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"comments"
+							]
+						},
+						"description": "Like or unlike a movie comment"
+					},
+					"response": []
+				},
+				{
+					"name": "Edit Movie Comment",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"commentId\": \"{{movieCommentId}}\",\n  \"content\": \"Updated comment content: After rewatching, I appreciate the cinematography even more.\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/comments",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"comments"
+							]
+						},
+						"description": "Edit an existing movie comment (only your own comments)"
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Movie Comment",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/comments?commentId={{movieCommentId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"comments"
+							],
+							"query": [
+								{
+									"key": "commentId",
+									"value": "{{movieCommentId}}"
+								}
+							]
+						},
+						"description": "Delete a movie comment (only your own comments)"
+					},
+					"response": []
+				}
+			],
+			"description": "Movie comments management with like functionality"
+		},
+		{
+			"name": "Shows Comments",
+			"item": [
+				{
+					"name": "Get Show Comments",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/shows/comments?showId=1&limit=10&skip=0",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"shows",
+								"comments"
+							],
+							"query": [
+								{
+									"key": "showId",
+									"value": "1"
+								},
+								{
+									"key": "limit",
+									"value": "10"
+								},
+								{
+									"key": "skip",
+									"value": "0"
+								}
+							]
+						},
+						"description": "Get comments for a specific TV show"
+					},
+					"response": []
+				},
+				{
+					"name": "Create Show Comment",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201) {",
+									"    const response = pm.response.json();",
+									"    pm.collectionVariables.set('showCommentId', response.commentId);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"showId\": \"1\",\n  \"content\": \"This show has amazing character development and storytelling!\",\n  \"isSpoiler\": false\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/shows/comments",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"shows",
+								"comments"
+							]
+						},
+						"description": "Create a new comment for a TV show"
+					},
+					"response": []
+				},
+				{
+					"name": "Like Show Comment",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"commentId\": \"{{showCommentId}}\",\n  \"action\": \"toggleLike\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/shows/comments",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"shows",
+								"comments"
+							]
+						},
+						"description": "Like or unlike a show comment"
+					},
+					"response": []
+				},
+				{
+					"name": "Edit Show Comment",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"commentId\": \"{{showCommentId}}\",\n  \"content\": \"Updated show comment: The writing quality improved significantly in later seasons.\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/shows/comments",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"shows",
+								"comments"
+							]
+						},
+						"description": "Edit an existing show comment (only your own comments)"
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Show Comment",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/shows/comments?commentId={{showCommentId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"shows",
+								"comments"
+							],
+							"query": [
+								{
+									"key": "commentId",
+									"value": "{{showCommentId}}"
+								}
+							]
+						},
+						"description": "Delete a show comment (only your own comments)"
+					},
+					"response": []
+				}
+			],
+			"description": "TV show comments management with like functionality"
+		},
+		{
+			"name": "Movies Ratings & Reviews",
+			"item": [
+				{
+					"name": "Get Movie Ratings",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/ratings?movieId=1390&includeAverage=true&limit=10&skip=0",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"ratings"
+							],
+							"query": [
+								{
+									"key": "movieId",
+									"value": "1390"
+								},
+								{
+									"key": "includeAverage",
+									"value": "true"
+								},
+								{
+									"key": "limit",
+									"value": "10"
+								},
+								{
+									"key": "skip",
+									"value": "0"
+								}
+							]
+						},
+						"description": "Get ratings for a specific movie with average rating"
+					},
+					"response": []
+				},
+				{
+					"name": "Get User Ratings",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/ratings?userId={{userId}}&limit=10&skip=0",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"ratings"
+							],
+							"query": [
+								{
+									"key": "userId",
+									"value": "{{userId}}"
+								},
+								{
+									"key": "limit",
+									"value": "10"
+								},
+								{
+									"key": "skip",
+									"value": "0"
+								}
+							]
+						},
+						"description": "Get ratings made by current user"
+					},
+					"response": []
+				},
+				{
+					"name": "Create/Update Movie Rating",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201 || pm.response.code === 200) {",
+									"    const response = pm.response.json();",
+									"    pm.collectionVariables.set('movieRatingId', response.ratingId);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"movieId\": \"1390\",\n  \"rating\": 9,\n  \"review\": \"An absolute masterpiece of filmmaking. The practical effects and attention to detail are extraordinary.\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/ratings",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"ratings"
+							]
+						},
+						"description": "Create a new rating or update existing rating for a movie (1-10 scale)"
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Movie Rating",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/ratings?movieId=1390",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"ratings"
+							],
+							"query": [
+								{
+									"key": "movieId",
+									"value": "1390"
+								}
+							]
+						},
+						"description": "Delete your rating for a movie"
+					},
+					"response": []
+				}
+			],
+			"description": "Movie rating and review endpoints (1-10 scale) with full CRUD support"
+		},
+		{
+			"name": "Shows Ratings & Reviews",
+			"item": [
+				{
+					"name": "Get Show Ratings",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/shows/ratings?showId=1&includeAverage=true&limit=10&skip=0",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"shows",
+								"ratings"
+							],
+							"query": [
+								{
+									"key": "showId",
+									"value": "1"
+								},
+								{
+									"key": "includeAverage",
+									"value": "true"
+								},
+								{
+									"key": "limit",
+									"value": "10"
+								},
+								{
+									"key": "skip",
+									"value": "0"
+								}
+							]
+						},
+						"description": "Get ratings for a specific TV show with average rating"
+					},
+					"response": []
+				},
+				{
+					"name": "Create/Update Show Rating",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201 || pm.response.code === 200) {",
+									"    const response = pm.response.json();",
+									"    pm.collectionVariables.set('showRatingId', response.ratingId);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"showId\": \"1\",\n  \"rating\": 10,\n  \"review\": \"One of the greatest TV shows ever made. Exceptional writing, character development, and production quality.\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/shows/ratings",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"shows",
+								"ratings"
+							]
+						},
+						"description": "Create a new rating or update existing rating for a TV show (1-10 scale)"
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Show Rating",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/shows/ratings?showId=1",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"shows",
+								"ratings"
+							],
+							"query": [
+								{
+									"key": "showId",
+									"value": "1"
+								}
+							]
+						},
+						"description": "Delete your rating for a TV show"
+					},
+					"response": []
+				}
+			],
+			"description": "TV show rating and review endpoints (1-10 scale) with full CRUD support"
+		},
+		{
+			"name": "System",
+			"item": [
+				{
+					"name": "Health Check",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								""
+							]
+						},
+						"description": "Check if the API server is running"
+					},
+					"response": []
+				},
+				{
+					"name": "Get API Logs",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/logs?limit=10&skip=0",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"logs"
+							],
+							"query": [
+								{
+									"key": "limit",
+									"value": "10"
+								},
+								{
+									"key": "skip",
+									"value": "0"
+								}
+							]
+						},
+						"description": "Get API usage logs (requires authentication)"
+					},
+					"response": []
+				}
+			],
+			"description": "System and utility endpoints"
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:3000",
+			"type": "string"
+		},
+		{
+			"key": "authToken",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "refreshToken",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "userId",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "userEmail",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "username",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "movieCommentId",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "showCommentId",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "movieRatingId",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "showRatingId",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "watchlistItemId",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "showWatchlistItemId",
+			"value": "",
+			"type": "string"
+		}
+	]
+}
