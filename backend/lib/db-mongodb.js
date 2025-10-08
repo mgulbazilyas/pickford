@@ -48,7 +48,11 @@ class Database {
       createdAt: new Date(),
       updatedAt: new Date(),
       isActive: true,
-      emailVerified: false
+      emailVerified: false,
+      emailVerificationToken: null,
+      emailVerificationExpiresAt: null,
+      passwordResetToken: null,
+      passwordResetExpiresAt: null
     })
     return { _id: result.insertedId, ...userData }
   }
@@ -64,6 +68,94 @@ class Database {
     if (!isValid) return null
 
     return user
+  }
+
+  async findUserByEmail(email) {
+    const users = this.db.collection('users')
+    return await users.findOne({ email })
+  }
+
+  async findUserByUsername(username) {
+    const users = this.db.collection('users')
+    return await users.findOne({ username })
+  }
+
+  async findUserByVerificationToken(token) {
+    const users = this.db.collection('users')
+    return await users.findOne({
+      emailVerificationToken: token,
+      emailVerificationExpiresAt: { $gt: new Date() }
+    })
+  }
+
+  async findUserByPasswordResetToken(token) {
+    const users = this.db.collection('users')
+    return await users.findOne({
+      passwordResetToken: token,
+      passwordResetExpiresAt: { $gt: new Date() }
+    })
+  }
+
+  async setEmailVerificationToken(userId, token, expiresAt) {
+    const users = this.db.collection('users')
+    const result = await users.updateOne(
+      { _id: new ObjectId(userId) },
+      {
+        $set: {
+          emailVerificationToken: token,
+          emailVerificationExpiresAt: expiresAt,
+          updatedAt: new Date()
+        }
+      }
+    )
+    return result.modifiedCount > 0
+  }
+
+  async verifyEmail(userId) {
+    const users = this.db.collection('users')
+    const result = await users.updateOne(
+      { _id: new ObjectId(userId) },
+      {
+        $set: {
+          emailVerified: true,
+          emailVerificationToken: null,
+          emailVerificationExpiresAt: null,
+          updatedAt: new Date()
+        }
+      }
+    )
+    return result.modifiedCount > 0
+  }
+
+  async setPasswordResetToken(userId, token, expiresAt) {
+    const users = this.db.collection('users')
+    const result = await users.updateOne(
+      { _id: new ObjectId(userId) },
+      {
+        $set: {
+          passwordResetToken: token,
+          passwordResetExpiresAt: expiresAt,
+          updatedAt: new Date()
+        }
+      }
+    )
+    return result.modifiedCount > 0
+  }
+
+  async updatePassword(userId, hashedPassword) {
+    const users = this.db.collection('users')
+    const result = await users.updateOne(
+      { _id: new ObjectId(userId) },
+      {
+        $set: {
+          password: hashedPassword,
+          passwordResetToken: null,
+          passwordResetExpiresAt: null,
+          updatedAt: new Date()
+        }
+      }
+    )
+    return result.modifiedCount > 0
   }
 
   async updateUser(userId, updates) {
@@ -82,6 +174,11 @@ class Database {
 
     const updatedUser = await users.findOne({ _id: new ObjectId(userId) })
     return updatedUser
+  }
+
+  async getUserById(userId) {
+    const users = this.db.collection('users')
+    return await users.findOne({ _id: new ObjectId(userId) })
   }
 
   async getUserStats(userId) {
@@ -773,6 +870,173 @@ class Database {
         }
       }
     )
+  }
+
+  // Subscription management
+  async insertSubscription(subscriptionData) {
+    if (!this.isConnected) throw new Error("Database not configured")
+
+    const subscriptions = this.db.collection('subscriptions')
+    const result = await subscriptions.insertOne({
+      ...subscriptionData,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    })
+    return result.insertedId
+  }
+
+  async updateSubscription(subscriptionId, updates) {
+    if (!this.isConnected) throw new Error("Database not configured")
+
+    const subscriptions = this.db.collection('subscriptions')
+    const result = await subscriptions.updateOne(
+      { stripeSubscriptionId: subscriptionId },
+      {
+        $set: {
+          ...updates,
+          updatedAt: new Date()
+        }
+      }
+    )
+    return result.modifiedCount > 0
+  }
+
+  async getUserSubscriptions(userId, status = null) {
+    if (!this.isConnected) throw new Error("Database not configured")
+
+    const subscriptions = this.db.collection('subscriptions')
+    const query = { userId: new ObjectId(userId) }
+
+    if (status) {
+      query.status = status
+    }
+
+    const cursor = subscriptions.find(query)
+      .sort({ createdAt: -1 })
+    return await cursor.toArray()
+  }
+
+  async getUserActiveSubscription(userId) {
+    if (!this.isConnected) throw new Error("Database not configured")
+
+    const subscriptions = this.db.collection('subscriptions')
+    const subscription = await subscriptions.findOne({
+      userId: new ObjectId(userId),
+      status: 'active',
+      currentPeriodEnd: { $gt: new Date() }
+    })
+    return subscription
+  }
+
+  async getSubscriptionByStripeId(stripeSubscriptionId) {
+    if (!this.isConnected) throw new Error("Database not configured")
+
+    const subscriptions = this.db.collection('subscriptions')
+    return await subscriptions.findOne({ stripeSubscriptionId })
+  }
+
+  // Packages management
+  async insertPackage(packageData) {
+    if (!this.isConnected) throw new Error("Database not configured")
+
+    const packages = this.db.collection('packages')
+    const result = await packages.insertOne({
+      ...packageData,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    })
+    return result.insertedId
+  }
+
+  async getAllPackages(status = 'active') {
+    if (!this.isConnected) throw new Error("Database not configured")
+
+    const packages = this.db.collection('packages')
+    const query = status ? { status } : {}
+    const cursor = packages.find(query)
+      .sort({ price: 1, sortOrder: 1 })
+    return await cursor.toArray()
+  }
+
+  async getPackageById(packageId) {
+    if (!this.isConnected) throw new Error("Database not configured")
+
+    const packages = this.db.collection('packages')
+    return await packages.findOne({ _id: new ObjectId(packageId) })
+  }
+
+  async updatePackage(packageId, updates) {
+    if (!this.isConnected) throw new Error("Database not configured")
+
+    const packages = this.db.collection('packages')
+    const result = await packages.updateOne(
+      { _id: new ObjectId(packageId) },
+      {
+        $set: {
+          ...updates,
+          updatedAt: new Date()
+        }
+      }
+    )
+    return result.modifiedCount > 0
+  }
+
+  // Stripe events storage
+  async insertStripeEvent(eventData) {
+    if (!this.isConnected) return
+
+    const stripeEvents = this.db.collection('stripe_events')
+    await stripeEvents.insertOne(eventData)
+  }
+
+  async getStripeEvents(limit = 50, skip = 0) {
+    if (!this.isConnected) throw new Error("Database not configured")
+
+    const stripeEvents = this.db.collection('stripe_events')
+    const cursor = stripeEvents.find({})
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+    return await cursor.toArray()
+  }
+
+  async getStripeEventsByUserId(userId, limit = 50, skip = 0) {
+    if (!this.isConnected) throw new Error("Database not configured")
+
+    const stripeEvents = this.db.collection('stripe_events')
+    const cursor = stripeEvents.find({ userId })
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+    return await cursor.toArray()
+  }
+
+  async markStripeEventProcessed(eventId) {
+    if (!this.isConnected) throw new Error("Database not configured")
+
+    const stripeEvents = this.db.collection('stripe_events')
+    const result = await stripeEvents.updateOne(
+      { stripeEventId: eventId },
+      {
+        $set: {
+          processed: true,
+          processedAt: new Date()
+        }
+      }
+    )
+    return result.modifiedCount > 0
+  }
+
+  // Customer portal sessions
+  async insertPortalSession(sessionData) {
+    if (!this.isConnected) throw new Error("Database not configured")
+
+    const sessions = this.db.collection('stripe_portal_sessions')
+    const result = await sessions.insertOne({
+      ...sessionData,
+      createdAt: new Date()
+    })
+    return result.insertedId
   }
 }
 

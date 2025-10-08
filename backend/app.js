@@ -46,7 +46,7 @@ async function selectLogs(limit = 50) {
 }
 
 // Middleware
-app.use(express.json())
+app.use(express.json({ verify: (req, _, buf) => { req.rawBody = buf } }))
 app.use(express.urlencoded({ extended: true }))
 app.use(cors({
   origin: '*',
@@ -229,29 +229,281 @@ app.all("/api/trakt-new/*", async (req, res) => {
   }
 })
 
-// Auth API endpoints
+// User Authentication endpoints with email verification
+app.post("/api/auth/register", async (req, res) => {
+  try {
+    const { db } = require('./lib/db-mongodb');
+    const { UserService } = require('./lib/user-service');
+
+    // Ensure database connection
+    if (!db.isConnected) {
+      await db.connect();
+    }
+
+    const { email, username, password, firstName, lastName, bio, avatar, preferences } = req.body;
+
+    // Register user with email verification
+    const user = await UserService.registerUser({
+      email,
+      username,
+      password,
+      firstName,
+      lastName,
+      bio,
+      avatar,
+      preferences
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: 'User registered successfully. Please check your email for verification.',
+      user,
+      requiresVerification: !user.emailVerified
+    });
+
+  } catch (error) {
+    console.error('Registration error:', error);
+    return res.status(400).json({
+      success: false,
+      message: error.message || 'Registration failed'
+    });
+  }
+});
+
+app.post("/api/auth/login", async (req, res) => {
+  try {
+    const { db } = require('./lib/db-mongodb');
+    const { UserService } = require('./lib/user-service');
+
+    // Ensure database connection
+    if (!db.isConnected) {
+      await db.connect();
+    }
+
+    const { email, password } = req.body;
+
+    // Login user
+    const { user, session } = await UserService.loginUser(email, password);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Login successful',
+      user,
+      session
+    });
+
+  } catch (error) {
+    console.error('Login error:', error);
+    return res.status(401).json({
+      success: false,
+      message: error.message || 'Login failed'
+    });
+  }
+});
+
+app.get("/api/auth/verify-email", async (req, res) => {
+  try {
+    const { db } = require('./lib/db-mongodb');
+    const { UserService } = require('./lib/user-service');
+
+    // Ensure database connection
+    if (!db.isConnected) {
+      await db.connect();
+    }
+
+    const token = req.query.token;
+
+    if (!token) {
+      return res.status(400).json({
+        success: false,
+        message: 'Verification token is required'
+      });
+    }
+
+    // Verify email
+    const user = await UserService.verifyEmail(token);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Email verified successfully',
+      user
+    });
+
+  } catch (error) {
+    console.error('Email verification error:', error);
+    return res.status(400).json({
+      success: false,
+      message: error.message || 'Email verification failed'
+    });
+  }
+});
+
+app.post("/api/auth/resend-verification", async (req, res) => {
+  try {
+    const { db } = require('./lib/db-mongodb');
+    const { UserService } = require('./lib/user-service');
+
+    // Ensure database connection
+    if (!db.isConnected) {
+      await db.connect();
+    }
+
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email is required'
+      });
+    }
+
+    // Resend verification email
+    const result = await UserService.resendVerificationEmail(email);
+
+    return res.status(result.success ? 200 : 400).json({
+      success: result.success,
+      message: result.message
+    });
+
+  } catch (error) {
+    console.error('Resend verification error:', error);
+    return res.status(400).json({
+      success: false,
+      message: error.message || 'Failed to resend verification email'
+    });
+  }
+});
+
+app.post("/api/auth/forgot-password", async (req, res) => {
+  try {
+    const { db } = require('./lib/db-mongodb');
+    const { UserService } = require('./lib/user-service');
+
+    // Ensure database connection
+    if (!db.isConnected) {
+      await db.connect();
+    }
+
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email is required'
+      });
+    }
+
+    // Request password reset
+    const result = await UserService.requestPasswordReset(email);
+
+    return res.status(result.success ? 200 : 400).json({
+      success: result.success,
+      message: result.message
+    });
+
+  } catch (error) {
+    console.error('Forgot password error:', error);
+    return res.status(400).json({
+      success: false,
+      message: error.message || 'Failed to process password reset request'
+    });
+  }
+});
+
+app.post("/api/auth/reset-password", async (req, res) => {
+  try {
+    const { db } = require('./lib/db-mongodb');
+    const { UserService } = require('./lib/user-service');
+
+    // Ensure database connection
+    if (!db.isConnected) {
+      await db.connect();
+    }
+
+    const { token, newPassword } = req.body;
+
+    if (!token || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: 'Reset token and new password are required'
+      });
+    }
+
+    // Validate password strength
+    if (newPassword.length < 8) {
+      return res.status(400).json({
+        success: false,
+        message: 'Password must be at least 8 characters long'
+      });
+    }
+
+    // Reset password
+    const result = await UserService.resetPassword(token, newPassword);
+
+    return res.status(result.success ? 200 : 400).json({
+      success: result.success,
+      message: result.message
+    });
+
+  } catch (error) {
+    console.error('Reset password error:', error);
+    return res.status(400).json({
+      success: false,
+      message: error.message || 'Failed to reset password'
+    });
+  }
+});
+
+app.post("/api/auth/logout", async (req, res) => {
+  try {
+    const authHeader = req.get('authorization');
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({
+        success: false,
+        message: 'Access token is required'
+      });
+    }
+
+    const token = authHeader.substring(7);
+    await AuthService.destroySession(token);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Logout successful'
+    });
+
+  } catch (error) {
+    console.error('Logout error:', error);
+    return res.status(400).json({
+      success: false,
+      message: error.message || 'Logout failed'
+    });
+  }
+});
+
+// Legacy auth endpoint for backward compatibility
 app.post("/api/auth", async (req, res) => {
   try {
-    const { action, ...data } = req.body
+    const { action, ...data } = req.body;
 
     switch (action) {
       case 'register':
-        return await handleRegister(req, res, data)
+        return await handleRegister(req, res, data);
       case 'login':
-        return await handleLogin(req, res, data)
+        return await handleLogin(req, res, data);
       case 'logout':
-        return await handleLogout(req, res, data)
+        return await handleLogout(req, res, data);
       case 'verify':
-        return await handleVerify(req, res, data)
+        return await handleVerify(req, res, data);
       case 'refresh':
-        return await handleRefreshToken(req, res, data)
+        return await handleRefreshToken(req, res, data);
       default:
-        return res.status(400).json({ error: 'Invalid action' })
+        return res.status(400).json({ error: 'Invalid action' });
     }
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'Internal server error' })
+    return res.status(500).json({ error: error.message || 'Internal server error' });
   }
-})
+});
 
 app.get("/api/auth", async (req, res) => {
   try {
@@ -300,6 +552,108 @@ app.post("/api/auth/refresh", async (req, res) => {
 })
 
 // User Profile API endpoints
+app.get("/api/auth/profile", async (req, res) => {
+  try {
+    const { db } = require('./lib/db-mongodb');
+    const { UserService } = require('./lib/user-service');
+
+    // Ensure database connection
+    if (!db.isConnected) {
+      await db.connect();
+    }
+
+    const authHeader = req.get('authorization');
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({
+        success: false,
+        message: 'Access token is required'
+      });
+    }
+
+    const token = authHeader.substring(7);
+
+    // Verify session and get user
+    const user = await AuthService.verifySession(token);
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid or expired token'
+      });
+    }
+
+    // Get user profile
+    const profile = await UserService.getUserProfile(user._id);
+
+    return res.status(200).json({
+      success: true,
+      user: profile
+    });
+
+  } catch (error) {
+    console.error('Get profile error:', error);
+    return res.status(400).json({
+      success: false,
+      message: error.message || 'Failed to get user profile'
+    });
+  }
+});
+
+app.put("/api/auth/profile", async (req, res) => {
+  try {
+    const { db } = require('./lib/db-mongodb');
+    const { UserService } = require('./lib/user-service');
+
+    // Ensure database connection
+    if (!db.isConnected) {
+      await db.connect();
+    }
+
+    const authHeader = req.get('authorization');
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({
+        success: false,
+        message: 'Access token is required'
+      });
+    }
+
+    const token = authHeader.substring(7);
+
+    // Verify session and get user
+    const user = await AuthService.verifySession(token);
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid or expired token'
+      });
+    }
+
+    const { firstName, lastName, bio, avatar, preferences } = req.body;
+
+    // Update user profile
+    const updatedProfile = await UserService.updateUserProfile(user._id, {
+      firstName,
+      lastName,
+      bio,
+      avatar,
+      preferences
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Profile updated successfully',
+      user: updatedProfile
+    });
+
+  } catch (error) {
+    console.error('Update profile error:', error);
+    return res.status(400).json({
+      success: false,
+      message: error.message || 'Failed to update profile'
+    });
+  }
+});
+
+// Legacy user profile endpoints for backward compatibility
 app.get("/api/user/profile", async (req, res) => {
   try {
     const authHeader = req.get('authorization')
@@ -1483,6 +1837,778 @@ async function handleRefreshToken(req, res, data) {
     return res.status(500).json({ error: error.message || 'Token refresh failed' })
   }
 }
+
+// Stripe Payment and Subscription API endpoints
+app.post("/api/payments/create-intent", async (req, res) => {
+  try {
+    const { db } = require('./lib/db-mongodb');
+    const { StripeService } = require('./lib/stripe-service');
+
+    // Ensure database connection
+    if (!db.isConnected) {
+      await db.connect();
+    }
+
+    const authHeader = req.get('authorization');
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({
+        success: false,
+        message: 'Access token is required'
+      });
+    }
+
+    const token = authHeader.substring(7);
+    const user = await AuthService.verifySession(token);
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid or expired token'
+      });
+    }
+
+    const { amount, currency = 'usd', metadata = {} } = req.body;
+
+    if (!amount || amount <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Valid amount is required'
+      });
+    }
+
+    // Create payment intent
+    const paymentIntent = await StripeService.createPaymentIntent(
+      user._id,
+      amount,
+      currency,
+      { email: user.email, ...metadata }
+    );
+
+    return res.status(200).json({
+      success: true,
+      clientSecret: paymentIntent.client_secret,
+      paymentIntentId: paymentIntent.id
+    });
+
+  } catch (error) {
+    console.error('Create payment intent error:', error);
+    return res.status(400).json({
+      success: false,
+      message: error.message || 'Failed to create payment intent'
+    });
+  }
+});
+
+app.post("/api/payments/create-checkout", async (req, res) => {
+  try {
+    const { db } = require('./lib/db-mongodb');
+    const { SubscriptionService } = require('./lib/subscription-service');
+
+    // Ensure database connection
+    if (!db.isConnected) {
+      await db.connect();
+    }
+
+    const authHeader = req.get('authorization');
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({
+        success: false,
+        message: 'Access token is required'
+      });
+    }
+
+    const token = authHeader.substring(7);
+    const user = await AuthService.verifySession(token);
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid or expired token'
+      });
+    }
+
+    const { amount, currency = 'usd', successUrl, cancelUrl, metadata = {} } = req.body;
+
+    if (!amount || amount <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Valid amount is required'
+      });
+    }
+
+    if (!successUrl || !cancelUrl) {
+      return res.status(400).json({
+        success: false,
+        message: 'Success and cancel URLs are required'
+      });
+    }
+
+    // Create checkout session
+    const checkoutSession = await SubscriptionService.createPaymentCheckout(
+      user._id,
+      amount,
+      currency,
+      successUrl,
+      cancelUrl,
+      { email: user.email, ...metadata }
+    );
+
+    return res.status(200).json({
+      success: true,
+      checkoutUrl: checkoutSession.url,
+      sessionId: checkoutSession.id
+    });
+
+  } catch (error) {
+    console.error('Create payment checkout error:', error);
+    return res.status(400).json({
+      success: false,
+      message: error.message || 'Failed to create payment checkout'
+    });
+  }
+});
+
+// Subscription Packages endpoints
+app.post("/api/subscriptions/packages", async (req, res) => {
+  try {
+    const { db } = require('./lib/db-mongodb');
+    const { SubscriptionService } = require('./lib/subscription-service');
+
+    // Ensure database connection
+    if (!db.isConnected) {
+      await db.connect();
+    }
+
+    const authHeader = req.get('authorization');
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({
+        success: false,
+        message: 'Access token is required'
+      });
+    }
+
+    const token = authHeader.substring(7);
+    const user = await AuthService.verifySession(token);
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid or expired token'
+      });
+    }
+
+    const packageData = req.body;
+
+    // Create package
+    const package_ = await SubscriptionService.createPackage(packageData);
+
+    return res.status(201).json({
+      success: true,
+      message: 'Package created successfully',
+      package: package_
+    });
+
+  } catch (error) {
+    console.error('Create package error:', error);
+    return res.status(400).json({
+      success: false,
+      message: error.message || 'Failed to create package'
+    });
+  }
+});
+
+app.get("/api/subscriptions/packages", async (req, res) => {
+  try {
+    const { db } = require('./lib/db-mongodb');
+    const { SubscriptionService } = require('./lib/subscription-service');
+
+    // Ensure database connection
+    if (!db.isConnected) {
+      await db.connect();
+    }
+
+    const { status } = req.query;
+
+    // Get all packages
+    const packages = await SubscriptionService.getAllPackages(status);
+
+    return res.status(200).json({
+      success: true,
+      packages
+    });
+
+  } catch (error) {
+    console.error('Get packages error:', error);
+    return res.status(400).json({
+      success: false,
+      message: error.message || 'Failed to get packages'
+    });
+  }
+});
+
+app.get("/api/subscriptions/packages/:packageId", async (req, res) => {
+  try {
+    const { db } = require('./lib/db-mongodb');
+    const { SubscriptionService } = require('./lib/subscription-service');
+
+    // Ensure database connection
+    if (!db.isConnected) {
+      await db.connect();
+    }
+
+    const { packageId } = req.params;
+
+    // Get package by ID
+    const package_ = await SubscriptionService.getPackageById(packageId);
+
+    if (!package_) {
+      return res.status(404).json({
+        success: false,
+        message: 'Package not found'
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      package: package_
+    });
+
+  } catch (error) {
+    console.error('Get package error:', error);
+    return res.status(400).json({
+      success: false,
+      message: error.message || 'Failed to get package'
+    });
+  }
+});
+
+// User Subscriptions endpoints
+app.post("/api/subscriptions/create", async (req, res) => {
+  try {
+    const { db } = require('./lib/db-mongodb');
+    const { SubscriptionService } = require('./lib/subscription-service');
+
+    // Ensure database connection
+    if (!db.isConnected) {
+      await db.connect();
+    }
+
+    const authHeader = req.get('authorization');
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({
+        success: false,
+        message: 'Access token is required'
+      });
+    }
+
+    const token = authHeader.substring(7);
+    const user = await AuthService.verifySession(token);
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid or expired token'
+      });
+    }
+
+    const { packageId, paymentMethodId } = req.body;
+
+    if (!packageId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Package ID is required'
+      });
+    }
+
+    // Create subscription
+    const subscription = await SubscriptionService.createUserSubscription(
+      user._id,
+      packageId,
+      paymentMethodId
+    );
+
+    return res.status(201).json({
+      success: true,
+      message: 'Subscription created successfully',
+      subscription
+    });
+
+  } catch (error) {
+    console.error('Create subscription error:', error);
+    return res.status(400).json({
+      success: false,
+      message: error.message || 'Failed to create subscription'
+    });
+  }
+});
+
+app.post("/api/subscriptions/custom", async (req, res) => {
+  try {
+    const { db } = require('./lib/db-mongodb');
+    const { SubscriptionService } = require('./lib/subscription-service');
+
+    // Ensure database connection
+    if (!db.isConnected) {
+      await db.connect();
+    }
+
+    const authHeader = req.get('authorization');
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({
+        success: false,
+        message: 'Access token is required'
+      });
+    }
+
+    const token = authHeader.substring(7);
+    const user = await AuthService.verifySession(token);
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid or expired token'
+      });
+    }
+
+    const subscriptionData = req.body;
+
+    // Create custom subscription
+    const subscription = await SubscriptionService.createCustomSubscription(
+      user._id,
+      subscriptionData
+    );
+
+    return res.status(201).json({
+      success: true,
+      message: 'Custom subscription created successfully',
+      subscription
+    });
+
+  } catch (error) {
+    console.error('Create custom subscription error:', error);
+    return res.status(400).json({
+      success: false,
+      message: error.message || 'Failed to create custom subscription'
+    });
+  }
+});
+
+app.post("/api/subscriptions/checkout", async (req, res) => {
+  try {
+    const { db } = require('./lib/db-mongodb');
+    const { SubscriptionService } = require('./lib/subscription-service');
+
+    // Ensure database connection
+    if (!db.isConnected) {
+      await db.connect();
+    }
+
+    const authHeader = req.get('authorization');
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({
+        success: false,
+        message: 'Access token is required'
+      });
+    }
+
+    const token = authHeader.substring(7);
+    const user = await AuthService.verifySession(token);
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid or expired token'
+      });
+    }
+
+    const { packageId, successUrl, cancelUrl, metadata = {} } = req.body;
+
+    if (!packageId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Package ID is required'
+      });
+    }
+
+    if (!successUrl || !cancelUrl) {
+      return res.status(400).json({
+        success: false,
+        message: 'Success and cancel URLs are required'
+      });
+    }
+
+    // Create checkout session
+    const checkoutSession = await SubscriptionService.createSubscriptionCheckout(
+      user._id,
+      packageId,
+      successUrl,
+      cancelUrl,
+      metadata
+    );
+
+    return res.status(200).json({
+      success: true,
+      checkoutUrl: checkoutSession.url,
+      sessionId: checkoutSession.id
+    });
+
+  } catch (error) {
+    console.error('Create subscription checkout error:', error);
+    return res.status(400).json({
+      success: false,
+      message: error.message || 'Failed to create subscription checkout'
+    });
+  }
+});
+
+app.get("/api/subscriptions", async (req, res) => {
+  try {
+    const { db } = require('./lib/db-mongodb');
+    const { SubscriptionService } = require('./lib/subscription-service');
+
+    // Ensure database connection
+    if (!db.isConnected) {
+      await db.connect();
+    }
+
+    const authHeader = req.get('authorization');
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({
+        success: false,
+        message: 'Access token is required'
+      });
+    }
+
+    const token = authHeader.substring(7);
+    const user = await AuthService.verifySession(token);
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid or expired token'
+      });
+    }
+
+    const { status } = req.query;
+
+    // Get user subscriptions
+    const subscriptions = await SubscriptionService.getUserSubscriptions(
+      user._id,
+      status
+    );
+
+    return res.status(200).json({
+      success: true,
+      subscriptions
+    });
+
+  } catch (error) {
+    console.error('Get subscriptions error:', error);
+    return res.status(400).json({
+      success: false,
+      message: error.message || 'Failed to get subscriptions'
+    });
+  }
+});
+
+app.get("/api/subscriptions/active", async (req, res) => {
+  try {
+    const { db } = require('./lib/db-mongodb');
+    const { SubscriptionService } = require('./lib/subscription-service');
+
+    // Ensure database connection
+    if (!db.isConnected) {
+      await db.connect();
+    }
+
+    const authHeader = req.get('authorization');
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({
+        success: false,
+        message: 'Access token is required'
+      });
+    }
+
+    const token = authHeader.substring(7);
+    const user = await AuthService.verifySession(token);
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid or expired token'
+      });
+    }
+
+    // Get active subscription
+    const subscription = await SubscriptionService.getUserActiveSubscription(user._id);
+
+    return res.status(200).json({
+      success: true,
+      subscription: subscription || null
+    });
+
+  } catch (error) {
+    console.error('Get active subscription error:', error);
+    return res.status(400).json({
+      success: false,
+      message: error.message || 'Failed to get active subscription'
+    });
+  }
+});
+
+app.post("/api/subscriptions/cancel", async (req, res) => {
+  try {
+    const { db } = require('./lib/db-mongodb');
+    const { SubscriptionService } = require('./lib/subscription-service');
+
+    // Ensure database connection
+    if (!db.isConnected) {
+      await db.connect();
+    }
+
+    const authHeader = req.get('authorization');
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({
+        success: false,
+        message: 'Access token is required'
+      });
+    }
+
+    const token = authHeader.substring(7);
+    const user = await AuthService.verifySession(token);
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid or expired token'
+      });
+    }
+
+    const { subscriptionId, cancelImmediately = false } = req.body;
+
+    if (!subscriptionId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Subscription ID is required'
+      });
+    }
+
+    // Cancel subscription
+    const canceledSubscription = await SubscriptionService.cancelSubscription(
+      subscriptionId,
+      user._id,
+      cancelImmediately
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: cancelImmediately ? 'Subscription canceled immediately' : 'Subscription will be canceled at period end',
+      subscription: canceledSubscription
+    });
+
+  } catch (error) {
+    console.error('Cancel subscription error:', error);
+    return res.status(400).json({
+      success: false,
+      message: error.message || 'Failed to cancel subscription'
+    });
+  }
+});
+
+app.post("/api/subscriptions/portal", async (req, res) => {
+  try {
+    const { db } = require('./lib/db-mongodb');
+    const { SubscriptionService } = require('./lib/subscription-service');
+
+    // Ensure database connection
+    if (!db.isConnected) {
+      await db.connect();
+    }
+
+    const authHeader = req.get('authorization');
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({
+        success: false,
+        message: 'Access token is required'
+      });
+    }
+
+    const token = authHeader.substring(7);
+    const user = await AuthService.verifySession(token);
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid or expired token'
+      });
+    }
+
+    const { returnUrl } = req.body;
+
+    if (!returnUrl) {
+      return res.status(400).json({
+        success: false,
+        message: 'Return URL is required'
+      });
+    }
+
+    // Create customer portal session
+    const portalSession = await SubscriptionService.createCustomerPortalSession(
+      user._id,
+      returnUrl
+    );
+
+    return res.status(200).json({
+      success: true,
+      portalUrl: portalSession.url,
+      sessionId: portalSession.id
+    });
+
+  } catch (error) {
+    console.error('Create portal session error:', error);
+    return res.status(400).json({
+      success: false,
+      message: error.message || 'Failed to create portal session'
+    });
+  }
+});
+
+app.get("/api/payments/methods", async (req, res) => {
+  try {
+    const { db } = require('./lib/db-mongodb');
+    const { SubscriptionService } = require('./lib/subscription-service');
+
+    // Ensure database connection
+    if (!db.isConnected) {
+      await db.connect();
+    }
+
+    const authHeader = req.get('authorization');
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({
+        success: false,
+        message: 'Access token is required'
+      });
+    }
+
+    const token = authHeader.substring(7);
+    const user = await AuthService.verifySession(token);
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid or expired token'
+      });
+    }
+
+    // Get payment methods
+    const paymentMethods = await SubscriptionService.getUserPaymentMethods(user._id);
+
+    return res.status(200).json({
+      success: true,
+      paymentMethods
+    });
+
+  } catch (error) {
+    console.error('Get payment methods error:', error);
+    return res.status(400).json({
+      success: false,
+      message: error.message || 'Failed to get payment methods'
+    });
+  }
+});
+
+// Stripe Webhook endpoint
+app.post("/api/webhooks/stripe", async (req, res) => {
+  try {
+    const { StripeService } = require('./lib/stripe-service');
+    const { SubscriptionService } = require('./lib/subscription-service');
+    const { db } = require('./lib/db-mongodb');
+
+    // Ensure database connection
+    if (!db.isConnected) {
+      await db.connect();
+    }
+
+    const signature = req.get('stripe-signature');
+    if (!signature) {
+      return res.status(400).json({
+        success: false,
+        message: 'Stripe signature is required'
+      });
+    }
+
+    // Verify webhook signature
+    const event = StripeService.verifyWebhookSignature(req.rawBody, signature);
+
+    // Handle the webhook event
+    await StripeService.handleWebhookEvent(event);
+
+    // Update subscription data if needed
+    if (event.type.startsWith('customer.subscription.')) {
+      await SubscriptionService.updateSubscriptionFromWebhook(event);
+    }
+
+    // Mark event as processed in database
+    await db.markStripeEventProcessed(event.id);
+
+    return res.status(200).json({ received: true });
+
+  } catch (error) {
+    console.error('Stripe webhook error:', error);
+    return res.status(400).json({
+      success: false,
+      message: error.message || 'Webhook processing failed'
+    });
+  }
+});
+
+// Stripe Events viewing endpoints (for admin/debugging)
+app.get("/api/stripe/events", async (req, res) => {
+  try {
+    const { db } = require('./lib/db-mongodb');
+
+    // Ensure database connection
+    if (!db.isConnected) {
+      await db.connect();
+    }
+
+    const { limit = 50, skip = 0 } = req.query;
+
+    // Get stripe events
+    const events = await db.getStripeEvents(parseInt(limit), parseInt(skip));
+
+    return res.status(200).json({
+      success: true,
+      events
+    });
+
+  } catch (error) {
+    console.error('Get stripe events error:', error);
+    return res.status(400).json({
+      success: false,
+      message: error.message || 'Failed to get stripe events'
+    });
+  }
+});
+
+app.get("/api/stripe/events/user/:userId", async (req, res) => {
+  try {
+    const { db } = require('./lib/db-mongodb');
+
+    // Ensure database connection
+    if (!db.isConnected) {
+      await db.connect();
+    }
+
+    const { userId } = req.params;
+    const { limit = 50, skip = 0 } = req.query;
+
+    // Get stripe events for user
+    const events = await db.getStripeEventsByUserId(userId, parseInt(limit), parseInt(skip));
+
+    return res.status(200).json({
+      success: true,
+      events
+    });
+
+  } catch (error) {
+    console.error('Get user stripe events error:', error);
+    return res.status(400).json({
+      success: false,
+      message: error.message || 'Failed to get user stripe events'
+    });
+  }
+});
 
 // Export for Passenger
 module.exports = app

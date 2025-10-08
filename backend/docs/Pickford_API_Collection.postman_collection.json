@@ -2,7 +2,7 @@
 	"info": {
 		"_postman_id": "pickford-backend-api",
 		"name": "Pickford Backend API",
-		"description": "Complete API collection for Pickford backend application including enhanced JWT authentication with refresh tokens, user profiles, movies/shows, watchlist, comments, and ratings endpoints.",
+		"description": "Complete API collection for Pickford backend application including enhanced JWT authentication with refresh tokens, user profiles, movies/shows, watchlist, comments, ratings, and comprehensive Stripe payment processing with subscription management.",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
 	},
 	"item": [
@@ -23,7 +23,6 @@
 									"    pm.collectionVariables.set('userId', response.user._id);",
 									"    pm.collectionVariables.set('userEmail', response.user.email);",
 									"    pm.collectionVariables.set('username', response.user.username);",
-									"    console.log('Tokens set: Access=' + response.accessToken?.substring(0, 20) + '...', ' + 'Refresh=' + response.refreshToken?.substring(0, 20) + '...');",
 									"}"
 								],
 								"type": "text/javascript"
@@ -70,7 +69,6 @@
 									"    pm.collectionVariables.set('userId', response.user._id);",
 									"    pm.collectionVariables.set('userEmail', response.user.email);",
 									"    pm.collectionVariables.set('username', response.user.username);",
-									"    console.log('Tokens updated: Access=' + response.accessToken?.substring(0, 20) + '...', ' + 'Refresh=' + response.refreshToken?.substring(0, 20) + '...');",
 									"}"
 								],
 								"type": "text/javascript"
@@ -1657,6 +1655,540 @@
 			"description": "TV show rating and review endpoints (1-10 scale) with full CRUD support"
 		},
 		{
+			"name": "Stripe Payments",
+			"item": [
+				{
+					"name": "Create Payment Intent",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    const response = pm.response.json();",
+									"    pm.collectionVariables.set('paymentIntentId', response.paymentIntent.id);",
+									"    pm.collectionVariables.set('clientSecret', response.paymentIntent.client_secret);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"amount\": 49.99,\n  \"currency\": \"usd\",\n  \"metadata\": {\n    \"productName\": \"Premium Feature\",\n    \"description\": \"Access to premium features\"\n  }\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/payments/create-intent",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"payments",
+								"create-intent"
+							]
+						},
+						"description": "Create a payment intent for one-time payments"
+					},
+					"response": []
+				},
+				{
+					"name": "Create Payment Checkout",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    const response = pm.response.json();",
+									"    pm.collectionVariables.set('checkoutSessionId', response.checkoutSession.id);",
+									"    pm.collectionVariables.set('checkoutUrl', response.checkoutSession.url);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"amount\": 49.99,\n  \"currency\": \"usd\",\n  \"successUrl\": \"{{baseUrl}}/payment/success\",\n  \"cancelUrl\": \"{{baseUrl}}/payment/canceled\",\n  \"metadata\": {\n    \"productName\": \"Premium Feature\"\n  }\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/payments/checkout",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"payments",
+								"checkout"
+							]
+						},
+						"description": "Create a Stripe checkout session for one-time payments"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Payment Methods",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/payments/methods",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"payments",
+								"methods"
+							]
+						},
+						"description": "Retrieve saved payment methods for the authenticated user"
+					},
+					"response": []
+				}
+			],
+			"description": "Stripe payment processing endpoints"
+		},
+		{
+			"name": "Subscription Packages",
+			"item": [
+				{
+					"name": "Create Subscription Package",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201) {",
+									"    const response = pm.response.json();",
+									"    pm.collectionVariables.set('packageId', response.package._id);",
+									"    pm.collectionVariables.set('stripeProductId', response.package.stripeProductId);",
+									"    pm.collectionVariables.set('stripePriceId', response.package.stripePriceId);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Premium Monthly\",\n  \"description\": \"Full access to all premium features\",\n  \"price\": 19.99,\n  \"currency\": \"usd\",\n  \"interval\": \"month\",\n  \"intervalCount\": 1,\n  \"features\": [\n    \"HD streaming\",\n    \"Offline downloads\",\n    \"Multiple profiles\",\n    \"Priority support\"\n  ],\n  \"trialPeriodDays\": 14,\n  \"sortOrder\": 1,\n  \"metadata\": {\n    \"tier\": \"premium\"\n  }\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/subscriptions/packages",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"subscriptions",
+								"packages"
+							]
+						},
+						"description": "Create a new subscription package (admin only)"
+					},
+					"response": []
+				},
+				{
+					"name": "Get All Subscription Packages",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/subscriptions/packages?status=active",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"subscriptions",
+								"packages"
+							],
+							"query": [
+								{
+									"key": "status",
+									"value": "active"
+								}
+							]
+						},
+						"description": "Retrieve all active subscription packages"
+					},
+					"response": []
+				}
+			],
+			"description": "Subscription package management endpoints"
+		},
+		{
+			"name": "Subscription Management",
+			"item": [
+				{
+					"name": "Create User Subscription",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201) {",
+									"    const response = pm.response.json();",
+									"    pm.collectionVariables.set('subscriptionId', response.subscription._id);",
+									"    pm.collectionVariables.set('stripeSubscriptionId', response.subscription.stripeSubscriptionId);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"packageId\": \"{{packageId}}\",\n  \"paymentMethodId\": \"pm_card_visa\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/subscriptions/create",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"subscriptions",
+								"create"
+							]
+						},
+						"description": "Create a subscription for the authenticated user"
+					},
+					"response": []
+				},
+				{
+					"name": "Create Custom Subscription",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201) {",
+									"    const response = pm.response.json();",
+									"    pm.collectionVariables.set('customSubscriptionId', response.subscription._id);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"amount\": 29.99,\n  \"currency\": \"usd\",\n  \"interval\": \"month\",\n  \"intervalCount\": 1,\n  \"productName\": \"Enterprise Plan\",\n  \"description\": \"Custom enterprise solution\",\n  \"features\": [\n    \"API access\",\n    \"Custom integrations\",\n    \"Dedicated support\"\n  ]\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/subscriptions/custom",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"subscriptions",
+								"custom"
+							]
+						},
+						"description": "Create a custom subscription with flexible pricing"
+					},
+					"response": []
+				},
+				{
+					"name": "Get User Active Subscription",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/subscriptions/active",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"subscriptions",
+								"active"
+							]
+						},
+						"description": "Retrieve the currently active subscription for the authenticated user"
+					},
+					"response": []
+				},
+				{
+					"name": "Get All User Subscriptions",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/subscriptions/all?status=all",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"subscriptions",
+								"all"
+							],
+							"query": [
+								{
+									"key": "status",
+									"value": "all"
+								}
+							]
+						},
+						"description": "Retrieve all subscriptions for the authenticated user"
+					},
+					"response": []
+				},
+				{
+					"name": "Create Customer Portal Session",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    const response = pm.response.json();",
+									"    pm.collectionVariables.set('portalSessionId', response.portalSession.id);",
+									"    pm.collectionVariables.set('portalUrl', response.portalSession.url);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"returnUrl\": \"{{baseUrl}}/account/billing\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/subscriptions/portal",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"subscriptions",
+								"portal"
+							]
+						},
+						"description": "Create a Stripe customer portal session for subscription management"
+					},
+					"response": []
+				},
+				{
+					"name": "Cancel Subscription",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"subscriptionId\": \"{{stripeSubscriptionId}}\",\n  \"cancelImmediately\": false,\n  \"reason\": \"No longer needed\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/subscriptions/cancel",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"subscriptions",
+								"cancel"
+							]
+						},
+						"description": "Cancel a user's subscription"
+					},
+					"response": []
+				},
+				{
+					"name": "Create Subscription Checkout",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    const response = pm.response.json();",
+									"    pm.collectionVariables.set('subscriptionCheckoutId', response.checkoutSession.id);",
+									"    pm.collectionVariables.set('subscriptionCheckoutUrl', response.checkoutSession.url);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"packageId\": \"{{packageId}}\",\n  \"successUrl\": \"{{baseUrl}}/subscription/success\",\n  \"cancelUrl\": \"{{baseUrl}}/subscription/canceled\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/subscriptions/checkout",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"subscriptions",
+								"checkout"
+							]
+						},
+						"description": "Create a Stripe checkout session for subscription purchases"
+					},
+					"response": []
+				}
+			],
+			"description": "User subscription management endpoints"
+		},
+		{
+			"name": "Webhooks",
+			"item": [
+				{
+					"name": "Stripe Webhook Handler",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Stripe-Signature",
+								"value": "stripe-signature-from-webhook",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"id\": \"evt_1234567890\",\n  \"object\": \"event\",\n  \"api_version\": \"2024-10-28.acacia\",\n  \"created\": 1640995200,\n  \"type\": \"payment_intent.succeeded\",\n  \"data\": {\n    \"object\": {\n      \"id\": \"pi_1234567890\",\n      \"object\": \"payment_intent\",\n      \"amount\": 4999,\n      \"currency\": \"usd\",\n      \"status\": \"succeeded\",\n      \"metadata\": {\n        \"userId\": \"{{userId}}\",\n        \"productName\": \"Premium Feature\"\n      }\n    }\n  }\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/webhooks/stripe",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"webhooks",
+								"stripe"
+							]
+						},
+						"description": "Handle incoming webhook events from Stripe"
+					},
+					"response": []
+				}
+			],
+			"description": "Webhook endpoint handlers"
+		},
+		{
 			"name": "System",
 			"item": [
 				{
@@ -1793,6 +2325,76 @@
 		},
 		{
 			"key": "showWatchlistItemId",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "paymentIntentId",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "clientSecret",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "checkoutSessionId",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "checkoutUrl",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "packageId",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "stripeProductId",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "stripePriceId",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "subscriptionId",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "stripeSubscriptionId",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "customSubscriptionId",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "portalSessionId",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "portalUrl",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "subscriptionCheckoutId",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "subscriptionCheckoutUrl",
 			"value": "",
 			"type": "string"
 		}
