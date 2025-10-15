@@ -28,13 +28,18 @@ All APIs return JSON responses with the following structure:
 1. [Authentication](#authentication)
 2. [User Profile](#user-profile)
 3. [Movies & Shows](#movies--shows)
-4. [Watchlist](#watchlist)
-5. [Comments](#comments)
-6. [Ratings & Reviews](#ratings--reviews)
-7. [API Logs](#api-logs)
+4. [Watchlist Collections](#watchlist-collections)
+5. [Legacy Watchlist](#legacy-watchlist-backward-compatibility)
+6. [Comments](#comments)
+7. [Ratings & Reviews](#ratings--reviews)
+8. [API Logs](#api-logs)
+
+### Watchlist Collection Endpoints
+- **Collections**: `/api/watchlist/collections` (GET, POST, PUT, DELETE)
+- **Collection Items**: `/api/watchlist/collections/{id}/items` (GET, POST, PUT, DELETE)
+- **Legacy**: `/api/watchlist` (GET, POST, PUT, DELETE - supports both movies and shows)
 
 ### Show Endpoints
-- **Watchlist**: `/api/shows/watchlist` (GET, POST, PUT, DELETE)
 - **Comments**: `/api/shows/comments` (GET, POST, PUT, DELETE)
 - **Ratings**: `/api/shows/ratings` (GET, POST, DELETE)
 
@@ -481,9 +486,290 @@ GET /api/trakt/shows/popular
 
 ---
 
-## Watchlist
+## Watchlist Collections
 
-### Get User Watchlist
+The watchlist system now supports named collections (like "My Favorites", "Watch Later", "See with Love") where users can organize both movies and shows.
+
+### Get User Watchlist Collections
+```http
+GET /api/watchlist/collections
+```
+
+**Headers:**
+```
+Authorization: Bearer <token>
+```
+
+**Response (200):**
+```json
+{
+  "collections": [
+    {
+      "_id": "collection_id",
+      "name": "My Favorites",
+      "description": "My favorite movies and shows",
+      "emoji": "⭐",
+      "itemCount": 5,
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "updatedAt": "2024-01-01T00:00:00.000Z"
+    },
+    {
+      "_id": "collection_id_2",
+      "name": "Watch Later",
+      "description": "Movies and shows to watch soon",
+      "emoji": "👀",
+      "itemCount": 3,
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "updatedAt": "2024-01-01T00:00:00.000Z"
+    }
+  ]
+}
+```
+
+### Create Watchlist Collection
+```http
+POST /api/watchlist/collections
+```
+
+**Headers:**
+```
+Authorization: Bearer <token>
+Content-Type: application/json
+```
+
+**Request Body:**
+```json
+{
+  "name": "See with Love",
+  "description": "Movies and shows to watch with my partner",
+  "emoji": "❤️"
+}
+```
+
+**Response (201):**
+```json
+{
+  "message": "Watchlist collection created successfully",
+  "collectionId": "collection_id"
+}
+```
+
+**Validation:**
+- `name` is required (1-100 characters)
+- `description` is optional (max 500 characters)
+- `emoji` is optional (1-10 characters)
+
+### Update Watchlist Collection
+```http
+PUT /api/watchlist/collections/{collectionId}
+```
+
+**Headers:**
+```
+Authorization: Bearer <token>
+Content-Type: application/json
+```
+
+**Request Body:**
+```json
+{
+  "name": "Updated Collection Name",
+  "description": "Updated description",
+  "emoji": "🎬"
+}
+```
+
+**Response (200):**
+```json
+{
+  "message": "Watchlist collection updated successfully"
+}
+```
+
+### Delete Watchlist Collection
+```http
+DELETE /api/watchlist/collections/{collectionId}
+```
+
+**Headers:**
+```
+Authorization: Bearer <token>
+```
+
+**Response (200):**
+```json
+{
+  "message": "Watchlist collection deleted successfully"
+}
+```
+
+**Note:** Deleting a collection also removes all items within it.
+
+### Get Collection Items
+```http
+GET /api/watchlist/collections/{collectionId}/items
+```
+
+**Headers:**
+```
+Authorization: Bearer <token>
+```
+
+**Query Parameters:**
+- `limit` (optional): Number of items per page (default: 20, max: 100)
+- `skip` (optional): Number of items to skip (default: 0)
+- `includeDetails` (optional): Include full content details (true/false, default: false)
+
+**Response (200):**
+```json
+{
+  "items": [
+    {
+      "_id": "item_id",
+      "collectionId": "collection_id",
+      "userId": "user_id",
+      "type": "movie",
+      "movieId": "movie_trakt_id",
+      "notes": "Great movie for date night!",
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "updatedAt": "2024-01-01T00:00:00.000Z",
+      "movie": {
+        "title": "Movie Title",
+        "year": 2024,
+        "ids": {
+          "trakt": 12345,
+          "slug": "movie-title-2024",
+          "imdb": "tt1234567"
+        },
+        "overview": "Movie overview",
+        "rating": 8.5,
+        "runtime": 120,
+        "genres": ["Action", "Drama"]
+      }
+    },
+    {
+      "_id": "item_id_2",
+      "collectionId": "collection_id",
+      "userId": "user_id",
+      "type": "show",
+      "showId": "show_trakt_id",
+      "notes": "Perfect show to binge together",
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "updatedAt": "2024-01-01T00:00:00.000Z",
+      "show": {
+        "title": "Show Title",
+        "year": 2024,
+        "ids": {
+          "trakt": 67890,
+          "slug": "show-title-2024",
+          "imdb": "tt7654321"
+        },
+        "overview": "Show overview",
+        "rating": 9.0,
+        "runtime": 60,
+        "genres": ["Drama", "Thriller"]
+      }
+    }
+  ],
+  "pagination": {
+    "limit": 20,
+    "skip": 0,
+    "totalCount": 2
+  }
+}
+```
+
+### Add Item to Collection
+```http
+POST /api/watchlist/collections/{collectionId}/items
+```
+
+**Headers:**
+```
+Authorization: Bearer <token>
+Content-Type: application/json
+```
+
+**Request Body:**
+```json
+{
+  "type": "movie",
+  "contentId": "movie_trakt_id",
+  "notes": "Looking forward to watching this"
+}
+```
+
+**or**
+```json
+{
+  "type": "show",
+  "contentId": "show_trakt_id",
+  "notes": "Can't wait to start this series"
+}
+```
+
+**Response (201):**
+```json
+{
+  "message": "Movie added to watchlist collection successfully",
+  "itemId": "item_id"
+}
+```
+
+**Validation:**
+- `type` is required and must be either "movie" or "show"
+- `contentId` is required (Trakt ID)
+- `notes` is optional (max 2000 characters)
+
+### Update Collection Item
+```http
+PUT /api/watchlist/collections/{collectionId}/items/{itemId}
+```
+
+**Headers:**
+```
+Authorization: Bearer <token>
+Content-Type: application/json
+```
+
+**Request Body:**
+```json
+{
+  "notes": "Updated notes about this item"
+}
+```
+
+**Response (200):**
+```json
+{
+  "message": "Watchlist item updated successfully"
+}
+```
+
+### Remove Item from Collection
+```http
+DELETE /api/watchlist/collections/{collectionId}/items/{itemId}
+```
+
+**Headers:**
+```
+Authorization: Bearer <token>
+```
+
+**Response (200):**
+```json
+{
+  "message": "Item removed from watchlist collection successfully"
+}
+```
+
+---
+
+## Legacy Watchlist (Backward Compatibility)
+
+For backward compatibility, the following endpoints are still supported and work with both movies and shows:
+
+### Get User Watchlist (Legacy)
 ```http
 GET /api/watchlist
 ```
@@ -496,36 +782,29 @@ Authorization: Bearer <token>
 **Query Parameters:**
 - `limit` (optional): Number of items per page (default: 20, max: 100)
 - `skip` (optional): Number of items to skip (default: 0)
-- `includeDetails` (optional): Include full movie details (true/false, default: false)
+- `includeDetails` (optional): Include full content details (true/false, default: false)
 
 **Response (200):**
 ```json
 {
-  "watchlist": [
+  "collections": [
     {
-      "_id": "watchlist_item_id",
+      "_id": "collection_id",
+      "name": "Watchlist",
+      "description": "Default watchlist collection",
+      "emoji": "📝",
+      "itemCount": 5
+    }
+  ],
+  "items": [
+    {
+      "_id": "item_id",
+      "collectionId": "collection_id",
       "userId": "user_id",
+      "type": "movie",
       "movieId": "movie_trakt_id",
       "notes": "Looking forward to watching this",
-      "priority": "high",
-      "createdAt": "2024-01-01T00:00:00.000Z",
-      "updatedAt": "2024-01-01T00:00:00.000Z",
-      "movie": {
-        "title": "Movie Title",
-        "year": 2024,
-        "ids": {
-          "trakt": 12345,
-          "slug": "movie-title-2024",
-          "imdb": "tt1234567"
-        },
-        "tagline": "Movie tagline",
-        "overview": "Movie overview",
-        "released": "2024-01-01",
-        "runtime": 120,
-        "genres": ["Action", "Drama"],
-        "rating": 8.5,
-        "votes": 1000
-      }
+      "createdAt": "2024-01-01T00:00:00.000Z"
     }
   ],
   "pagination": {
@@ -536,71 +815,7 @@ Authorization: Bearer <token>
 }
 ```
 
-**Note:** When `includeDetails=true`, the response includes full movie details from the Trakt API. If the Trakt API is unavailable, it falls back to basic watchlist data.
-
-### Get User Show Watchlist
-```http
-GET /api/shows/watchlist
-```
-
-**Headers:**
-```
-Authorization: Bearer <token>
-```
-
-**Query Parameters:**
-- `limit` (optional): Number of items per page (default: 20, max: 100)
-- `skip` (optional): Number of items to skip (default: 0)
-- `includeDetails` (optional): Include full show details (true/false, default: false)
-
-**Response (200):**
-```json
-{
-  "watchlist": [
-    {
-      "_id": "watchlist_item_id",
-      "userId": "user_id",
-      "showId": "show_trakt_id",
-      "notes": "Can't wait to start this series",
-      "priority": "high",
-      "createdAt": "2024-01-01T00:00:00.000Z",
-      "updatedAt": "2024-01-01T00:00:00.000Z",
-      "show": {
-        "title": "Show Title",
-        "year": 2024,
-        "ids": {
-          "trakt": 67890,
-          "slug": "show-title-2024",
-          "tvdb": 45678,
-          "imdb": "tt7654321",
-          "tmdb": 98765
-        },
-        "overview": "Show overview",
-        "first_aired": "2024-01-01T10:00:00.000Z",
-        "airs": {
-          "day": "Monday",
-          "time": "20:00",
-          "timezone": "America/New_York"
-        },
-        "runtime": 60,
-        "country": "us",
-        "network": "HBO",
-        "genres": ["Drama", "Thriller"],
-        "status": "returning series",
-        "rating": 9.0,
-        "votes": 2000
-      }
-    }
-  ],
-  "pagination": {
-    "limit": 20,
-    "skip": 0,
-    "totalCount": 3
-  }
-}
-```
-
-### Add Movie to Watchlist
+### Add to Watchlist (Legacy)
 ```http
 POST /api/watchlist
 ```
@@ -608,9 +823,10 @@ POST /api/watchlist
 **Headers:**
 ```
 Authorization: Bearer <token>
+Content-Type: application/json
 ```
 
-**Request Body:**
+**Request Body (Movie):**
 ```json
 {
   "movieId": "movie_trakt_id",
@@ -619,27 +835,7 @@ Authorization: Bearer <token>
 }
 ```
 
-**Priority Options:** `low`, `medium`, `high` (default: `medium`)
-
-**Response (201):**
-```json
-{
-  "message": "Movie added to watchlist successfully",
-  "watchlistItemId": "watchlist_item_id"
-}
-```
-
-### Add Show to Watchlist
-```http
-POST /api/shows/watchlist
-```
-
-**Headers:**
-```
-Authorization: Bearer <token>
-```
-
-**Request Body:**
+**Request Body (Show):**
 ```json
 {
   "showId": "show_trakt_id",
@@ -648,17 +844,15 @@ Authorization: Bearer <token>
 }
 ```
 
-**Priority Options:** `low`, `medium`, `high` (default: `medium`)
-
 **Response (201):**
 ```json
 {
-  "message": "Show added to watchlist successfully",
-  "watchlistItemId": "watchlist_item_id"
+  "message": "Movie added to watchlist successfully",
+  "watchlistItemId": "item_id"
 }
 ```
 
-### Update Watchlist Item
+### Update Watchlist Item (Legacy)
 ```http
 PUT /api/watchlist
 ```
@@ -666,12 +860,22 @@ PUT /api/watchlist
 **Headers:**
 ```
 Authorization: Bearer <token>
+Content-Type: application/json
 ```
 
-**Request Body:**
+**Request Body (Movie):**
 ```json
 {
   "movieId": "movie_trakt_id",
+  "notes": "Updated notes",
+  "priority": "medium"
+}
+```
+
+**Request Body (Show):**
+```json
+{
+  "showId": "show_trakt_id",
   "notes": "Updated notes",
   "priority": "medium"
 }
@@ -684,35 +888,13 @@ Authorization: Bearer <token>
 }
 ```
 
-### Update Show Watchlist Item
-```http
-PUT /api/shows/watchlist
-```
-
-**Headers:**
-```
-Authorization: Bearer <token>
-```
-
-**Request Body:**
-```json
-{
-  "showId": "show_trakt_id",
-  "notes": "Updated notes",
-  "priority": "medium"
-}
-```
-
-**Response (200):**
-```json
-{
-  "message": "Show watchlist item updated successfully"
-}
-```
-
-### Remove Movie from Watchlist
+### Remove from Watchlist (Legacy)
 ```http
 DELETE /api/watchlist?movieId={movieId}
+```
+or
+```http
+DELETE /api/watchlist?showId={showId}
 ```
 
 **Headers:**
@@ -724,23 +906,6 @@ Authorization: Bearer <token>
 ```json
 {
   "message": "Movie removed from watchlist successfully"
-}
-```
-
-### Remove Show from Watchlist
-```http
-DELETE /api/shows/watchlist?showId={showId}
-```
-
-**Headers:**
-```
-Authorization: Bearer <token>
-```
-
-**Response (200):**
-```json
-{
-  "message": "Show removed from watchlist successfully"
 }
 ```
 
@@ -1561,15 +1726,30 @@ Currently, no rate limiting is implemented, but it's recommended for production 
 }
 ```
 
-### Watchlist Model
+### Watchlist Collection Model
 ```json
 {
   "_id": "ObjectId",
   "userId": "ObjectId",
-  "movieId": "string (for movie watchlist)",
-  "showId": "string (for show watchlist)",
+  "name": "string",
+  "description": "string",
+  "emoji": "string",
+  "itemCount": "number",
+  "createdAt": "Date",
+  "updatedAt": "Date"
+}
+```
+
+### Watchlist Item Model
+```json
+{
+  "_id": "ObjectId",
+  "collectionId": "ObjectId",
+  "userId": "ObjectId",
+  "movieId": "string (for movie items)",
+  "showId": "string (for show items)",
   "notes": "string (optional)",
-  "priority": "string (low|medium|high)",
+  "type": "string (movie|show)",
   "createdAt": "Date",
   "updatedAt": "Date"
 }

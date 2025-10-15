@@ -542,13 +542,84 @@ class Database {
     return await this.deleteRating(ratingId, userId)
   }
 
-  // Watchlist (works for both movies and shows)
-  async addToWatchlist(userId, contentType, contentId, notes = null, priority = 'medium') {
-    const watchlist = this.db.collection('watchlist')
+  // Watchlist Collections (named collections with movies and shows)
+  async createWatchlistCollection(userId, name, description = null, emoji = null) {
+    const collections = this.db.collection('watchlist_collections')
     const data = {
       userId: new ObjectId(userId),
+      name,
+      description: description || '',
+      emoji: emoji || '',
+      itemCount: 0,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    }
+    const result = await collections.insertOne(data)
+    return result.insertedId
+  }
+
+  async getUserWatchlistCollections(userId) {
+    const collections = this.db.collection('watchlist_collections')
+    const cursor = collections.find({ userId: new ObjectId(userId) })
+      .sort({ createdAt: 1 })
+    const watchlistCollections = await cursor.toArray()
+    return watchlistCollections
+  }
+
+  async updateWatchlistCollection(userId, collectionId, updates) {
+    const collections = this.db.collection('watchlist_collections')
+    const result = await collections.updateOne(
+      {
+        _id: new ObjectId(collectionId),
+        userId: new ObjectId(userId)
+      },
+      {
+        $set: {
+          ...updates,
+          updatedAt: new Date()
+        }
+      }
+    )
+    return result.modifiedCount > 0
+  }
+
+  async deleteWatchlistCollection(userId, collectionId) {
+    const collections = this.db.collection('watchlist_collections')
+    const watchlistItems = this.db.collection('watchlist_items')
+
+    // Delete the collection
+    const collectionResult = await collections.deleteOne({
+      _id: new ObjectId(collectionId),
+      userId: new ObjectId(userId)
+    })
+
+    // Delete all items in this collection
+    await watchlistItems.deleteMany({
+      collectionId: new ObjectId(collectionId),
+      userId: new ObjectId(userId)
+    })
+
+    return collectionResult.deletedCount > 0
+  }
+
+  async addToWatchlistCollection(userId, collectionId, contentType, contentId, notes = null) {
+    const watchlistItems = this.db.collection('watchlist_items')
+
+    // Check if item already exists in this collection
+    const existingItem = await watchlistItems.findOne({
+      collectionId: new ObjectId(collectionId),
+      userId: new ObjectId(userId),
+      [contentType === 'movie' ? 'movieId' : 'showId']: contentId
+    })
+
+    if (existingItem) {
+      throw new Error('Item already exists in this watchlist collection')
+    }
+
+    const data = {
+      collectionId: new ObjectId(collectionId),
+      userId: new ObjectId(userId),
       notes: notes || '',
-      priority,
       createdAt: new Date(),
       updatedAt: new Date()
     }
@@ -559,32 +630,36 @@ class Database {
       data.showId = contentId
     }
 
-    const result = await watchlist.insertOne(data)
+    const result = await watchlistItems.insertOne(data)
+
+    // Update collection item count
+    await this.updateWatchlistCollectionItemCount(collectionId)
+
     return result.insertedId
   }
 
-  async addToMovieWatchlist(userId, movieId, notes = null, priority = 'medium') {
-    // Legacy method - delegates to generic method
-    return await this.addToWatchlist(userId, 'movie', movieId, notes, priority)
-  }
+  async getWatchlistCollectionItems(userId, collectionId, limit = 20, skip = 0, includeDetails = false) {
+    const watchlistItems = this.db.collection('watchlist_items')
+    const query = {
+      collectionId: new ObjectId(collectionId),
+      userId: new ObjectId(userId)
+    }
 
-  async addToShowWatchlist(userId, showId, notes = null, priority = 'medium') {
-    // Legacy method - delegates to generic method
-    return await this.addToWatchlist(userId, 'show', showId, notes, priority)
-  }
-
-  async getWatchlist(userId, limit = 20, skip = 0) {
-    const watchlist = this.db.collection('watchlist')
-    const cursor = watchlist.find({ userId: new ObjectId(userId) })
+    const cursor = watchlistItems.find(query)
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit)
 
-    const watchlistArray = await cursor.toArray()
-    const totalCount = await watchlist.countDocuments({ userId: new ObjectId(userId) })
+    const items = await cursor.toArray()
+    const totalCount = await watchlistItems.countDocuments(query)
+
+    let itemsWithDetails = items
+    if (includeDetails && items.length > 0) {
+      itemsWithDetails = await this.addDetailsToWatchlistItems(items)
+    }
 
     return {
-      watchlist: watchlistArray,
+      items: itemsWithDetails,
       pagination: {
         limit,
         skip,
@@ -593,32 +668,26 @@ class Database {
     }
   }
 
-  async getWatchlistWithDetails(userId, limit = 20, skip = 0) {
-    const watchlist = await this.getWatchlist(userId, limit, skip)
-
-    if (!watchlist.watchlist || watchlist.watchlist.length === 0) {
-      return watchlist
-    }
-
-    // Get details from Trakt API for each watchlist item
+  async addDetailsToWatchlistItems(items) {
     const BASE_URL = process.env.TRAKT_BASE_URL || "https://api.trakt.tv"
     const TRAKT_CLIENT_ID = process.env.TRAKT_CLIENT_ID
     const TRAKT_API_VERSION = process.env.TRAKT_API_VERSION || "2"
 
     if (!TRAKT_CLIENT_ID) {
-      // Return basic watchlist if Trakt client ID is not configured
-      return watchlist
+      return items
     }
 
-    const watchlistWithDetails = await Promise.all(
-      watchlist.watchlist.map(async (item) => {
+    const itemsWithDetails = await Promise.all(
+      items.map(async (item) => {
         try {
           let url, contentDetails
+          const contentId = item.movieId || item.showId
+          const contentType = item.movieId ? 'movie' : 'show'
 
-          if (item.movieId) {
-            url = `${BASE_URL}/movies/${item.movieId}?extended=full`
-          } else if (item.showId) {
-            url = `${BASE_URL}/shows/${item.showId}?extended=full`
+          if (contentType === 'movie') {
+            url = `${BASE_URL}/movies/${contentId}?extended=full`
+          } else if (contentType === 'show') {
+            url = `${BASE_URL}/shows/${contentId}?extended=full`
           }
 
           const response = await fetch(url, {
@@ -631,42 +700,176 @@ class Database {
 
           if (response.ok) {
             contentDetails = await response.json()
-            if (item.movieId) {
-              return { ...item, movie: contentDetails }
-            } else if (item.showId) {
-              return { ...item, show: contentDetails }
+            return {
+              ...item,
+              type: contentType,
+              [contentType]: contentDetails
             }
           } else {
-            return item
+            return {
+              ...item,
+              type: contentType
+            }
           }
         } catch (error) {
           const id = item.movieId || item.showId
           console.error(`Failed to fetch details for ${id}:`, error)
-          return item
+          return {
+            ...item,
+            type: item.movieId ? 'movie' : 'show'
+          }
         }
       })
     )
 
+    return itemsWithDetails
+  }
+
+  async updateWatchlistCollectionItemCount(collectionId) {
+    const watchlistItems = this.db.collection('watchlist_items')
+    const collections = this.db.collection('watchlist_collections')
+
+    const itemCount = await watchlistItems.countDocuments({
+      collectionId: new ObjectId(collectionId)
+    })
+
+    await collections.updateOne(
+      { _id: new ObjectId(collectionId) },
+      {
+        $set: {
+          itemCount,
+          updatedAt: new Date()
+        }
+      }
+    )
+  }
+
+  async updateWatchlistItem(userId, collectionId, itemId, updates) {
+    const watchlistItems = this.db.collection('watchlist_items')
+    const result = await watchlistItems.updateOne(
+      {
+        _id: new ObjectId(itemId),
+        collectionId: new ObjectId(collectionId),
+        userId: new ObjectId(userId)
+      },
+      {
+        $set: {
+          ...updates,
+          updatedAt: new Date()
+        }
+      }
+    )
+    return result.modifiedCount > 0
+  }
+
+  async removeFromWatchlistCollection(userId, collectionId, itemId) {
+    const watchlistItems = this.db.collection('watchlist_items')
+    const result = await watchlistItems.deleteOne({
+      _id: new ObjectId(itemId),
+      collectionId: new ObjectId(collectionId),
+      userId: new ObjectId(userId)
+    })
+
+    if (result.deletedCount > 0) {
+      await this.updateWatchlistCollectionItemCount(collectionId)
+    }
+
+    return result.deletedCount > 0
+  }
+
+  async isInWatchlistCollection(userId, collectionId, contentType, contentId) {
+    const watchlistItems = this.db.collection('watchlist_items')
+    const query = {
+      collectionId: new ObjectId(collectionId),
+      userId: new ObjectId(userId),
+      [contentType === 'movie' ? 'movieId' : 'showId']: contentId
+    }
+    const item = await watchlistItems.findOne(query)
+    return item !== null
+  }
+
+  // Legacy methods for backward compatibility
+  async addToWatchlist(userId, contentType, contentId, notes = null, priority = 'medium') {
+    // Create a default collection if none exists
+    const collections = await this.getUserWatchlistCollections(userId)
+    let defaultCollection
+
+    if (collections.length === 0) {
+      const collectionId = await this.createWatchlistCollection(userId, 'Watchlist', 'Default watchlist collection', '📝')
+      defaultCollection = collectionId
+    } else {
+      defaultCollection = collections[0]._id
+    }
+
+    return await this.addToWatchlistCollection(userId, defaultCollection, contentType, contentId, notes)
+  }
+
+  async addToMovieWatchlist(userId, movieId, notes = null, priority = 'medium') {
+    return await this.addToWatchlist(userId, 'movie', movieId, notes, priority)
+  }
+
+  async addToShowWatchlist(userId, showId, notes = null, priority = 'medium') {
+    return await this.addToWatchlist(userId, 'show', showId, notes, priority)
+  }
+
+  async getWatchlist(userId, limit = 20, skip = 0) {
+    const collections = await this.getUserWatchlistCollections(userId)
+    if (collections.length === 0) {
+      return {
+        collections: [],
+        items: [],
+        pagination: {
+          limit,
+          skip,
+          totalCount: 0
+        }
+      }
+    }
+
+    // Get items from the first collection (for backward compatibility)
+    const firstCollection = collections[0]
+    const itemsResult = await this.getWatchlistCollectionItems(userId, firstCollection._id, limit, skip)
+
     return {
-      ...watchlist,
-      watchlist: watchlistWithDetails
+      collections: collections,
+      items: itemsResult.items,
+      pagination: itemsResult.pagination
+    }
+  }
+
+  async getWatchlistWithDetails(userId, limit = 20, skip = 0) {
+    const collections = await this.getUserWatchlistCollections(userId)
+    if (collections.length === 0) {
+      return {
+        collections: [],
+        items: [],
+        pagination: {
+          limit,
+          skip,
+          totalCount: 0
+        }
+      }
+    }
+
+    // Get items with details from the first collection (for backward compatibility)
+    const firstCollection = collections[0]
+    const itemsResult = await this.getWatchlistCollectionItems(userId, firstCollection._id, limit, skip, true)
+
+    return {
+      collections: collections,
+      items: itemsResult.items,
+      pagination: itemsResult.pagination
     }
   }
 
   async isInWatchlist(userId, contentType, contentId) {
-    const watchlist = this.db.collection('watchlist')
-    const query = {
-      userId: new ObjectId(userId)
+    const collections = await this.getUserWatchlistCollections(userId)
+    if (collections.length === 0) {
+      return false
     }
 
-    if (contentType === 'movie') {
-      query.movieId = contentId
-    } else if (contentType === 'show') {
-      query.showId = contentId
-    }
-
-    const item = await watchlist.findOne(query)
-    return item !== null
+    // Check the first collection (for backward compatibility)
+    return await this.isInWatchlistCollection(userId, collections[0]._id, contentType, contentId)
   }
 
   async isInMovieWatchlist(userId, movieId) {
@@ -678,18 +881,19 @@ class Database {
   }
 
   async updateWatchlistItem(userId, contentType, contentId, updates) {
-    const watchlist = this.db.collection('watchlist')
+    const collections = await this.getUserWatchlistCollections(userId)
+    if (collections.length === 0) {
+      return false
+    }
+
+    const watchlistItems = this.db.collection('watchlist_items')
     const query = {
-      userId: new ObjectId(userId)
+      collectionId: new ObjectId(collections[0]._id),
+      userId: new ObjectId(userId),
+      [contentType === 'movie' ? 'movieId' : 'showId']: contentId
     }
 
-    if (contentType === 'movie') {
-      query.movieId = contentId
-    } else if (contentType === 'show') {
-      query.showId = contentId
-    }
-
-    const result = await watchlist.updateOne(
+    const result = await watchlistItems.updateOne(
       query,
       {
         $set: {
@@ -698,7 +902,6 @@ class Database {
         }
       }
     )
-
     return result.modifiedCount > 0
   }
 
@@ -711,18 +914,23 @@ class Database {
   }
 
   async removeFromWatchlist(userId, contentType, contentId) {
-    const watchlist = this.db.collection('watchlist')
+    const collections = await this.getUserWatchlistCollections(userId)
+    if (collections.length === 0) {
+      return false
+    }
+
+    const watchlistItems = this.db.collection('watchlist_items')
     const query = {
-      userId: new ObjectId(userId)
+      collectionId: new ObjectId(collections[0]._id),
+      userId: new ObjectId(userId),
+      [contentType === 'movie' ? 'movieId' : 'showId']: contentId
+    }
+    const result = await watchlistItems.deleteOne(query)
+
+    if (result.deletedCount > 0) {
+      await this.updateWatchlistCollectionItemCount(collections[0]._id)
     }
 
-    if (contentType === 'movie') {
-      query.movieId = contentId
-    } else if (contentType === 'show') {
-      query.showId = contentId
-    }
-
-    const result = await watchlist.deleteOne(query)
     return result.deletedCount > 0
   }
 
@@ -1037,6 +1245,144 @@ class Database {
       createdAt: new Date()
     })
     return result.insertedId
+  }
+
+  // Get cached movie/show data from Trakt API cache
+  async getCachedMovieData(movieId) {
+    if (!this.isConnected) return null
+
+    // Try to find cached movie data from the cache collection
+    const cache = this.db.collection('cache')
+    const cacheKey = `trakt-movies-${movieId}`
+
+    const cached = await cache.findOne({ key: cacheKey })
+    if (!cached) return null
+
+    // Check if cache is expired (24 hours)
+    const now = new Date()
+    const cachedTime = new Date(cached.createdAt)
+    const hoursDiff = (now - cachedTime) / (1000 * 60 * 60)
+    if (hoursDiff > 24) return null
+
+    const movieData = cached.data
+    return {
+      title: movieData.title,
+      year: movieData.year,
+      overview: movieData.overview || movieData.tagline,
+      rating: movieData.rating,
+      votes: movieData.votes,
+      runtime: movieData.runtime,
+      genres: movieData.genres,
+      released: movieData.released,
+      ids: movieData.ids,
+      tagline: movieData.tagline,
+      country: movieData.country,
+      language: movieData.language,
+      status: movieData.status,
+      homepage: movieData.homepage,
+      trailer: movieData.trailer,
+      images: movieData.images
+    }
+  }
+
+  async getCachedShowData(showId) {
+    if (!this.isConnected) return null
+
+    // Try to find cached show data from the cache collection
+    const cache = this.db.collection('cache')
+    const cacheKey = `trakt-shows-${showId}`
+
+    const cached = await cache.findOne({ key: cacheKey })
+    if (!cached) return null
+
+    // Check if cache is expired (24 hours)
+    const now = new Date()
+    const cachedTime = new Date(cached.createdAt)
+    const hoursDiff = (now - cachedTime) / (1000 * 60 * 60)
+    if (hoursDiff > 24) return null
+
+    const showData = cached.data
+    return {
+      title: showData.title,
+      year: showData.year,
+      overview: showData.overview,
+      rating: showData.rating,
+      votes: showData.votes,
+      runtime: showData.runtime,
+      genres: showData.genres,
+      status: showData.status,
+      first_aired: showData.first_aired,
+      airs: showData.airs,
+      network: showData.network,
+      country: showData.country,
+      language: showData.language,
+      ids: showData.ids,
+      aired_episodes: showData.aired_episodes,
+      episode_count: showData.episode_count,
+      seasons: showData.seasons,
+      homepage: showData.homepage,
+      trailer: showData.trailer,
+      images: showData.images
+    }
+  }
+
+  // Add movie/show data to watchlist item
+  async addToWatchlistWithData(userId, contentType, contentId, notes, priority) {
+    if (!this.isConnected) throw new Error("Database not configured")
+
+    // Get cached movie/show data
+    let contentData = null
+    if (contentType === 'movie') {
+      contentData = await this.getCachedMovieData(contentId)
+    } else if (contentType === 'show') {
+      contentData = await this.getCachedShowData(contentId)
+    }
+
+    // Add to watchlist with content data
+    const watchlistItems = this.db.collection('watchlist_items')
+    const itemData = {
+      userId: new ObjectId(userId),
+      [contentType === 'movie' ? 'movieId' : 'showId']: contentId,
+      notes: notes || '',
+      priority: priority || 'medium',
+      contentType: contentType,
+      contentData: contentData,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    }
+
+    const result = await watchlistItems.insertOne(itemData)
+    return result.insertedId
+  }
+
+  // Get watchlist filtered by content type
+  async getWatchlist(userId, limit = 20, skip = 0, showsOnly = false) {
+    if (!this.isConnected) throw new Error("Database not configured")
+
+    const watchlistItems = this.db.collection('watchlist_items')
+    let query = { userId: new ObjectId(userId) }
+
+    // Filter by content type if showsOnly is true
+    if (showsOnly) {
+      query.showId = { $exists: true }
+    }
+
+    const cursor = watchlistItems.find(query)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+
+    const items = await cursor.toArray()
+    const totalCount = await watchlistItems.countDocuments(query)
+
+    return {
+      watchlist: items,
+      pagination: {
+        limit: parseInt(limit),
+        skip: parseInt(skip),
+        totalCount: parseInt(totalCount)
+      }
+    }
   }
 }
 

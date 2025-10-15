@@ -1,6 +1,9 @@
 require('dotenv').config()
 const express = require("express")
 const cors = require("cors")
+const multer = require('multer')
+const path = require('path')
+const fs = require('fs')
 const app = express()
 
 // Force enable console logging regardless of NODE_ENV
@@ -125,6 +128,122 @@ app.all("/api/trakt/*", async (req, res) => {
   }
 })
 
+// Function to save individual movies/shows from trending/popular responses
+async function saveIndividualItemsFromResponse(data, path) {
+  try {
+    const isMovie = path.includes('/movies/')
+    const isShow = path.includes('/shows/')
+
+    if (!isMovie && !isShow) return
+
+    // Handle array responses (like trending/popular lists)
+    if (Array.isArray(data)) {
+      for (const item of data) {
+        if (isMovie && item.movie) {
+          await cacheMovieItem(item.movie)
+        } else if (isShow && item.show) {
+          await cacheShowItem(item.show)
+        }
+      }
+    }
+    // Handle responses with numeric keys (like { "0": { "title": "Deadpool", "year": 2016 } })
+    else if (typeof data === 'object' && data !== null) {
+      for (const key in data) {
+        if (key.match(/^\d+$/)) { // Check if key is numeric
+          const item = data[key]
+          // Check if this item has movie/show specific fields to determine type
+          const hasMovieFields = item && (item.title || item.year || item.released)
+          const hasShowFields = item && (item.first_aired || item.seasons || item.episode_count)
+
+          if (isMovie && hasMovieFields) {
+            await cacheMovieItem(item)
+          } else if (isShow && hasShowFields) {
+            await cacheShowItem(item)
+          }
+          // If path contains both movies and shows, determine by content
+          else if (hasMovieFields && item.movie) {
+            await cacheMovieItem(item)
+          } else if (hasShowFields && item.show) {
+            await cacheShowItem(item)
+          }
+          // Fallback: check path context
+          else if (isMovie && item) {
+            await cacheMovieItem(item)
+          } else if (isShow && item) {
+            await cacheShowItem(item)
+          }
+        }
+      }
+    }
+    // Handle single movie/show responses
+    else if (isMovie && data.movie) {
+      await cacheMovieItem(data.movie)
+    } else if (isShow && data.show) {
+      await cacheShowItem(data.show)
+    }
+  } catch (error) {
+    console.error('Error saving individual items from response:', error)
+  }
+}
+
+// Function to cache individual movie item
+async function cacheMovieItem(item) {
+  try {
+    // Handle both direct movie objects and nested movie objects
+    const movie = item.movie || item
+
+    if (!movie || !movie.ids || !movie.ids.trakt) return
+
+    const movieId = movie.ids.trakt.toString()
+    const cacheKey = `trakt-movies-${movieId}`
+
+    // Check if already cached
+    const existing = await db.getCachedResponse(cacheKey)
+    if (existing) return
+
+    // Cache the movie data
+    await db.cacheResponse(cacheKey, {
+      ...movie,
+      _hasImages: movie.images ? true : false,
+      _cacheStatus: "HIT",
+      _source: "trending-popular"
+    })
+
+    console.log(`Cached movie from trending/popular: ${movie.title} (${movieId})`)
+  } catch (error) {
+    console.error('Error caching movie item:', error)
+  }
+}
+
+// Function to cache individual show item
+async function cacheShowItem(item) {
+  try {
+    // Handle both direct show objects and nested show objects
+    const show = item.show || item
+
+    if (!show || !show.ids || !show.ids.trakt) return
+
+    const showId = show.ids.trakt.toString()
+    const cacheKey = `trakt-shows-${showId}`
+
+    // Check if already cached
+    const existing = await db.getCachedResponse(cacheKey)
+    if (existing) return
+
+    // Cache the show data
+    await db.cacheResponse(cacheKey, {
+      ...show,
+      _hasImages: show.images ? true : false,
+      _cacheStatus: "HIT",
+      _source: "trending-popular"
+    })
+
+    console.log(`Cached show from trending/popular: ${show.title} (${showId})`)
+  } catch (error) {
+    console.error('Error caching show item:', error)
+  }
+}
+
 // Trakt proxy endpoints with MongoDB caching
 app.all("/api/trakt-new/*", async (req, res) => {
   const path = req.originalUrl.replace("/api/trakt-new", "")
@@ -138,8 +257,10 @@ app.all("/api/trakt-new/*", async (req, res) => {
       return res.status(500).json({ error: "TRAKT_CLIENT_ID not configured" })
     }
 
-    const targetUrl = `${BASE_URL}${path}${Object.keys(query).length ? '?' + new URLSearchParams(query).toString() : ''}`
-
+    // Override query parameters to always include extended=full,images
+    const overriddenQuery = { ...query, extended: 'full,images' }
+    const targetUrl = `${BASE_URL}${path}${Object.keys(overriddenQuery).length ? '?' + new URLSearchParams(overriddenQuery).toString() : ''}`
+    console.log(`[Proxy] ${method} ${targetUrl}`);
     const headers = {
       "Content-Type": "application/json",
       "trakt-api-key": TRAKT_CLIENT_ID,
@@ -184,7 +305,7 @@ app.all("/api/trakt-new/*", async (req, res) => {
         // If images are missing, fetch them separately
         if (!hasImages && path.startsWith("/movies/")) {
           try {
-            const imagesUrl = `${BASE_URL}${path}?extended=images`
+            const imagesUrl = `${BASE_URL}${path}?extended=full,images`
             const imagesResponse = await fetch(imagesUrl, { headers })
             const imagesData = await imagesResponse.json()
 
@@ -216,6 +337,11 @@ app.all("/api/trakt-new/*", async (req, res) => {
         const hasImages = data.movie && data.movie.images
         // Store data directly without wrapper to avoid confusion
         await db.cacheResponse(cacheKey, { ...data, _hasImages: hasImages, _cacheStatus: "HIT" })
+
+        // Save individual movies/shows from trending/popular responses
+        if (path.includes('/trending') || path.includes('/popular')) {
+          await saveIndividualItemsFromResponse(data, path)
+        }
       }
     }
 
@@ -691,13 +817,14 @@ app.put("/api/user/profile", async (req, res) => {
       return res.status(401).json({ error: 'Invalid or expired token' })
     }
 
-    const { firstName, lastName, bio, avatar } = req.body
+    const { firstName, lastName, bio, avatar, photo } = req.body
     const updates = {}
 
     if (firstName !== undefined) updates.firstName = firstName
     if (lastName !== undefined) updates.lastName = lastName
     if (bio !== undefined) updates.bio = bio
     if (avatar !== undefined) updates.avatar = avatar
+    if (photo !== undefined) updates.photo = photo
 
     const updatedUser = await db.updateUser(user._id, updates)
 
@@ -706,6 +833,160 @@ app.put("/api/user/profile", async (req, res) => {
     return res.status(500).json({ error: error.message || 'Internal server error' })
   }
 })
+
+// User Photo Management
+
+// Configure multer for file uploads
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const uploadDir = path.join(__dirname, 'uploads')
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true })
+    }
+    cb(null, uploadDir)
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9)
+    cb(null, 'user-' + req.user._id + '-' + uniqueSuffix + path.extname(file.originalname))
+  }
+})
+
+const fileFilter = (req, file, cb) => {
+  // Accept only image files
+  if (file.mimetype.startsWith('image/')) {
+    cb(null, true)
+  } else {
+    cb(new Error('Only image files are allowed'), false)
+  }
+}
+
+const upload = multer({
+  storage: storage,
+  fileFilter: fileFilter,
+  limits: {
+    fileSize: 5 * 1024 * 1024 // 5MB limit
+  }
+})
+
+// Middleware to set user in request for multer
+const setUserForUpload = async (req, res, next) => {
+  try {
+    const authHeader = req.get('authorization')
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Authorization header required' })
+    }
+    const token = authHeader.substring(7)
+    const user = await AuthService.verifySession(token)
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid or expired token' })
+    }
+    req.user = user
+    next()
+  } catch (error) {
+    return res.status(401).json({ error: 'Invalid or expired token' })
+  }
+}
+
+// Upload user photo
+app.post("/api/user/photo", setUserForUpload, upload.single('photo'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No photo file provided' })
+    }
+
+    // Delete previous photo if exists
+    const currentUser = await db.findUserByEmail(req.user.email)
+    if (currentUser && currentUser.photo) {
+      const oldPhotoPath = path.join(__dirname, 'uploads', path.basename(currentUser.photo))
+      if (fs.existsSync(oldPhotoPath)) {
+        fs.unlinkSync(oldPhotoPath)
+      }
+    }
+
+    // Create photo URL
+    const photoUrl = `/uploads/${req.file.filename}`
+
+    // Update user photo in database
+    await db.updateUser(req.user._id, { photo: photoUrl })
+
+    return res.status(200).json({
+      message: 'Photo uploaded successfully',
+      photoUrl: photoUrl
+    })
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'Failed to upload photo' })
+  }
+})
+
+// Update user photo (same as upload - replaces existing photo)
+app.put("/api/user/photo", setUserForUpload, upload.single('photo'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No photo file provided' })
+    }
+
+    // Delete previous photo if exists
+    const currentUser = await db.findUserByEmail(req.user.email)
+    if (currentUser && currentUser.photo) {
+      const oldPhotoPath = path.join(__dirname, 'uploads', path.basename(currentUser.photo))
+      if (fs.existsSync(oldPhotoPath)) {
+        fs.unlinkSync(oldPhotoPath)
+      }
+    }
+
+    // Create photo URL
+    const photoUrl = `/uploads/${req.file.filename}`
+
+    // Update user photo in database
+    await db.updateUser(req.user._id, { photo: photoUrl })
+
+    return res.status(200).json({
+      message: 'Photo updated successfully',
+      photoUrl: photoUrl
+    })
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'Failed to update photo' })
+  }
+})
+
+// Delete user photo
+app.delete("/api/user/photo", async (req, res) => {
+  try {
+    const authHeader = req.get('authorization')
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Authorization header required' })
+    }
+    const token = authHeader.substring(7)
+    const user = await AuthService.verifySession(token)
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid or expired token' })
+    }
+
+    // Get current user to find photo
+    const currentUser = await db.findUserByEmail(user.email)
+    if (currentUser && currentUser.photo) {
+      // Delete photo file
+      const photoPath = path.join(__dirname, 'uploads', path.basename(currentUser.photo))
+      if (fs.existsSync(photoPath)) {
+        fs.unlinkSync(photoPath)
+      }
+
+      // Remove photo from database
+      await db.updateUser(user._id, { photo: null })
+
+      return res.status(200).json({
+        message: 'Photo deleted successfully'
+      })
+    } else {
+      return res.status(404).json({ error: 'No photo found to delete' })
+    }
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'Failed to delete photo' })
+  }
+})
+
+// Serve uploaded files publicly
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')))
 
 // Comments API endpoints
 app.get("/api/comments", async (req, res) => {
@@ -1038,6 +1319,266 @@ app.delete("/api/ratings", async (req, res) => {
 })
 
 // Watchlist API endpoints
+// === UNIFIED WATCHLIST API ENDPOINTS ===
+
+// Get user's watchlist collections
+app.get("/api/watchlist/collections", async (req, res) => {
+  try {
+    const authHeader = req.get('authorization')
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Authorization header required' })
+    }
+
+    const token = authHeader.substring(7)
+    const user = await AuthService.verifySession(token)
+
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid or expired token' })
+    }
+
+    const collections = await db.getUserWatchlistCollections(user._id)
+    return res.status(200).json({ collections })
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'Failed to fetch watchlist collections' })
+  }
+})
+
+// Create a new watchlist collection
+app.post("/api/watchlist/collections", async (req, res) => {
+  try {
+    const authHeader = req.get('authorization')
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Authorization header required' })
+    }
+
+    const token = authHeader.substring(7)
+    const user = await AuthService.verifySession(token)
+
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid or expired token' })
+    }
+
+    const { name, description, emoji } = req.body
+
+    if (!name || name.trim() === '') {
+      return res.status(400).json({ error: 'Collection name is required' })
+    }
+
+    const collectionId = await db.createWatchlistCollection(user._id, name.trim(), description, emoji)
+
+    return res.status(201).json({
+      message: 'Watchlist collection created successfully',
+      collectionId: collectionId.toString()
+    })
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'Failed to create watchlist collection' })
+  }
+})
+
+// Update a watchlist collection
+app.put("/api/watchlist/collections/:collectionId", async (req, res) => {
+  try {
+    const authHeader = req.get('authorization')
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Authorization header required' })
+    }
+
+    const token = authHeader.substring(7)
+    const user = await AuthService.verifySession(token)
+
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid or expired token' })
+    }
+
+    const { collectionId } = req.params
+    const { name, description, emoji } = req.body
+
+    if (!name || name.trim() === '') {
+      return res.status(400).json({ error: 'Collection name is required' })
+    }
+
+    const updates = {}
+    if (name !== undefined) updates.name = name.trim()
+    if (description !== undefined) updates.description = description
+    if (emoji !== undefined) updates.emoji = emoji
+
+    const updated = await db.updateWatchlistCollection(user._id, collectionId, updates)
+
+    if (!updated) {
+      return res.status(404).json({ error: 'Collection not found' })
+    }
+
+    return res.status(200).json({ message: 'Watchlist collection updated successfully' })
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'Failed to update watchlist collection' })
+  }
+})
+
+// Delete a watchlist collection
+app.delete("/api/watchlist/collections/:collectionId", async (req, res) => {
+  try {
+    const authHeader = req.get('authorization')
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Authorization header required' })
+    }
+
+    const token = authHeader.substring(7)
+    const user = await AuthService.verifySession(token)
+
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid or expired token' })
+    }
+
+    const { collectionId } = req.params
+
+    const deleted = await db.deleteWatchlistCollection(user._id, collectionId)
+
+    if (!deleted) {
+      return res.status(404).json({ error: 'Collection not found' })
+    }
+
+    return res.status(200).json({ message: 'Watchlist collection deleted successfully' })
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'Failed to delete watchlist collection' })
+  }
+})
+
+// Get items in a specific watchlist collection
+app.get("/api/watchlist/collections/:collectionId/items", async (req, res) => {
+  try {
+    const authHeader = req.get('authorization')
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Authorization header required' })
+    }
+
+    const token = authHeader.substring(7)
+    const user = await AuthService.verifySession(token)
+
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid or expired token' })
+    }
+
+    const { collectionId } = req.params
+    const { limit, skip } = parseQueryParams(req.query)
+    const includeDetails = req.query.includeDetails === 'true'
+
+    const result = await db.getWatchlistCollectionItems(user._id, collectionId, limit, skip, includeDetails)
+    return res.status(200).json(result)
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'Failed to fetch watchlist items' })
+  }
+})
+
+// Add item to watchlist collection (supports both movies and shows)
+app.post("/api/watchlist/collections/:collectionId/items", async (req, res) => {
+  try {
+    const authHeader = req.get('authorization')
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Authorization header required' })
+    }
+
+    const token = authHeader.substring(7)
+    const user = await AuthService.verifySession(token)
+
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid or expired token' })
+    }
+
+    const { collectionId } = req.params
+    const { type, contentId, notes } = req.body
+
+    if (!type || !contentId) {
+      return res.status(400).json({ error: 'Type and contentId are required' })
+    }
+
+    if (!['movie', 'show'].includes(type)) {
+      return res.status(400).json({ error: 'Type must be either "movie" or "show"' })
+    }
+
+    const alreadyInCollection = await db.isInWatchlistCollection(user._id, collectionId, type, contentId)
+    if (alreadyInCollection) {
+      return res.status(409).json({ error: 'Item already exists in this collection' })
+    }
+
+    const itemId = await db.addToWatchlistCollection(user._id, collectionId, type, contentId, notes)
+
+    return res.status(201).json({
+      message: `${type === 'movie' ? 'Movie' : 'Show'} added to watchlist collection successfully`,
+      itemId: itemId.toString()
+    })
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'Failed to add item to watchlist collection' })
+  }
+})
+
+// Update item in watchlist collection
+app.put("/api/watchlist/collections/:collectionId/items/:itemId", async (req, res) => {
+  try {
+    const authHeader = req.get('authorization')
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Authorization header required' })
+    }
+
+    const token = authHeader.substring(7)
+    const user = await AuthService.verifySession(token)
+
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid or expired token' })
+    }
+
+    const { collectionId, itemId } = req.params
+    const { notes } = req.body
+
+    if (notes === undefined) {
+      return res.status(400).json({ error: 'At least notes field must be provided' })
+    }
+
+    const updates = { notes }
+
+    const updated = await db.updateWatchlistItem(user._id, collectionId, itemId, updates)
+
+    if (!updated) {
+      return res.status(404).json({ error: 'Item not found in collection' })
+    }
+
+    return res.status(200).json({ message: 'Watchlist item updated successfully' })
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'Failed to update watchlist item' })
+  }
+})
+
+// Remove item from watchlist collection
+app.delete("/api/watchlist/collections/:collectionId/items/:itemId", async (req, res) => {
+  try {
+    const authHeader = req.get('authorization')
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Authorization header required' })
+    }
+
+    const token = authHeader.substring(7)
+    const user = await AuthService.verifySession(token)
+
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid or expired token' })
+    }
+
+    const { collectionId, itemId } = req.params
+
+    const removed = await db.removeFromWatchlistCollection(user._id, collectionId, itemId)
+
+    if (!removed) {
+      return res.status(404).json({ error: 'Item not found in collection' })
+    }
+
+    return res.status(200).json({ message: 'Item removed from watchlist collection successfully' })
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'Failed to remove item from watchlist collection' })
+  }
+})
+
+// LEGACY ENDPOINTS - for backward compatibility
+
+// Get user's watchlist (returns first collection for backward compatibility)
 app.get("/api/watchlist", async (req, res) => {
   try {
     const authHeader = req.get('authorization')
@@ -1057,7 +1598,7 @@ app.get("/api/watchlist", async (req, res) => {
 
     let watchlist
     if (includeDetails) {
-      watchlist = await db.getWatchlistWithMovieDetails(user._id, limit, skip)
+      watchlist = await db.getWatchlistWithDetails(user._id, limit, skip)
     } else {
       watchlist = await db.getWatchlist(user._id, limit, skip)
     }
@@ -1068,6 +1609,7 @@ app.get("/api/watchlist", async (req, res) => {
   }
 })
 
+// Add to watchlist (adds to first collection for backward compatibility)
 app.post("/api/watchlist", async (req, res) => {
   try {
     const authHeader = req.get('authorization')
@@ -1082,32 +1624,31 @@ app.post("/api/watchlist", async (req, res) => {
       return res.status(401).json({ error: 'Invalid or expired token' })
     }
 
-    const { movieId, notes, priority = 'medium' } = req.body
+    const { movieId, showId, notes, priority = 'medium' } = req.body
+    const contentId = movieId || showId
+    const contentType = movieId ? 'movie' : 'show'
 
-    if (!movieId) {
-      return res.status(400).json({ error: 'Movie ID is required' })
+    if (!contentId) {
+      return res.status(400).json({ error: 'Either movieId or showId is required' })
     }
 
-    if (!['low', 'medium', 'high'].includes(priority)) {
-      return res.status(400).json({ error: 'Priority must be one of: low, medium, high' })
-    }
-
-    const alreadyInWatchlist = await db.isInWatchlist(user._id, movieId)
+    const alreadyInWatchlist = await db.isInWatchlist(user._id, contentType, contentId)
     if (alreadyInWatchlist) {
-      return res.status(409).json({ error: 'Movie is already in watchlist' })
+      return res.status(409).json({ error: `${contentType === 'movie' ? 'Movie' : 'Show'} is already in watchlist` })
     }
 
-    const watchlistItemId = await db.addToWatchlist(user._id, movieId, notes, priority)
+    const watchlistItemId = await db.addToWatchlistWithData(user._id, contentType, contentId, notes, priority)
 
     return res.status(201).json({
-      message: 'Movie added to watchlist successfully',
+      message: `${contentType === 'movie' ? 'Movie' : 'Show'} added to watchlist successfully`,
       watchlistItemId: watchlistItemId.toString()
     })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'Failed to add movie to watchlist' })
+    return res.status(500).json({ error: error.message || `Failed to add ${contentType === 'movie' ? 'movie' : 'show'} to watchlist` })
   }
 })
 
+// Update watchlist item
 app.put("/api/watchlist", async (req, res) => {
   try {
     const authHeader = req.get('authorization')
@@ -1122,10 +1663,12 @@ app.put("/api/watchlist", async (req, res) => {
       return res.status(401).json({ error: 'Invalid or expired token' })
     }
 
-    const { movieId, notes, priority } = req.body
+    const { movieId, showId, notes, priority } = req.body
+    const contentId = movieId || showId
+    const contentType = movieId ? 'movie' : 'show'
 
-    if (!movieId) {
-      return res.status(400).json({ error: 'Movie ID is required' })
+    if (!contentId) {
+      return res.status(400).json({ error: 'Either movieId or showId is required' })
     }
 
     if (!notes && !priority) {
@@ -1140,10 +1683,10 @@ app.put("/api/watchlist", async (req, res) => {
     if (notes !== undefined) updates.notes = notes
     if (priority !== undefined) updates.priority = priority
 
-    const updated = await db.updateWatchlistItem(user._id, movieId, updates)
+    const updated = await db.updateWatchlistItem(user._id, contentType, contentId, updates)
 
     if (!updated) {
-      return res.status(404).json({ error: 'Movie not found in watchlist' })
+      return res.status(404).json({ error: `${contentType === 'movie' ? 'Movie' : 'Show'} not found in watchlist` })
     }
 
     return res.status(200).json({ message: 'Watchlist item updated successfully' })
@@ -1152,6 +1695,7 @@ app.put("/api/watchlist", async (req, res) => {
   }
 })
 
+// Remove from watchlist
 app.delete("/api/watchlist", async (req, res) => {
   try {
     const authHeader = req.get('authorization')
@@ -1166,21 +1710,23 @@ app.delete("/api/watchlist", async (req, res) => {
       return res.status(401).json({ error: 'Invalid or expired token' })
     }
 
-    const movieId = req.query.movieId
+    const { movieId, showId } = req.query
+    const contentId = movieId || showId
+    const contentType = movieId ? 'movie' : 'show'
 
-    if (!movieId) {
-      return res.status(400).json({ error: 'Movie ID is required' })
+    if (!contentId) {
+      return res.status(400).json({ error: 'Either movieId or showId is required' })
     }
 
-    const removed = await db.removeFromWatchlist(user._id, movieId)
+    const removed = await db.removeFromWatchlist(user._id, contentType, contentId)
 
     if (!removed) {
-      return res.status(404).json({ error: 'Movie not found in watchlist' })
+      return res.status(404).json({ error: `${contentType === 'movie' ? 'Movie' : 'Show'} not found in watchlist` })
     }
 
-    return res.status(200).json({ message: 'Movie removed from watchlist successfully' })
+    return res.status(200).json({ message: `${contentType === 'movie' ? 'Movie' : 'Show'} removed from watchlist successfully` })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'Failed to remove movie from watchlist' })
+    return res.status(500).json({ error: error.message || `Failed to remove ${contentType === 'movie' ? 'movie' : 'show'} from watchlist` })
   }
 })
 
@@ -1554,27 +2100,39 @@ app.get("/api/shows/watchlist", async (req, res) => {
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return res.status(401).json({ error: 'Authorization header required' })
     }
-
     const token = authHeader.substring(7)
     const user = await AuthService.verifySession(token)
-
     if (!user) {
       return res.status(401).json({ error: 'Invalid or expired token' })
     }
 
     const { limit, skip } = parseQueryParams(req.query)
-    const includeDetails = req.query.includeDetails === 'true'
+    const { includeDetails = 'false' } = req.query
 
-    let watchlist
-    if (includeDetails) {
-      watchlist = await db.getWatchlistWithDetails(user._id, limit, skip)
-    } else {
-      watchlist = await db.getWatchlist(user._id, limit, skip)
+    const watchlistItems = await db.getWatchlist(user._id, limit, skip, true) // Get shows only
+
+    // If includeDetails is true, try to fetch full show data from cache
+    if (includeDetails === 'true') {
+      const itemsWithDetails = await Promise.all(
+        watchlistItems.watchlist.map(async (item) => {
+          if (item.showId && item.contentData) {
+            return {
+              ...item,
+              show: item.contentData
+            }
+          }
+          return item
+        })
+      )
+      return res.status(200).json({
+        ...watchlistItems,
+        watchlist: itemsWithDetails
+      })
     }
 
-    return res.status(200).json(watchlist)
+    return res.status(200).json(watchlistItems)
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'Failed to fetch watchlist' })
+    return res.status(500).json({ error: error.message || 'Failed to fetch show watchlist' })
   }
 })
 
@@ -1584,30 +2142,23 @@ app.post("/api/shows/watchlist", async (req, res) => {
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return res.status(401).json({ error: 'Authorization header required' })
     }
-
     const token = authHeader.substring(7)
     const user = await AuthService.verifySession(token)
-
     if (!user) {
       return res.status(401).json({ error: 'Invalid or expired token' })
     }
 
     const { showId, notes, priority = 'medium' } = req.body
-
     if (!showId) {
       return res.status(400).json({ error: 'Show ID is required' })
     }
 
-    if (!['low', 'medium', 'high'].includes(priority)) {
-      return res.status(400).json({ error: 'Priority must be one of: low, medium, high' })
-    }
-
-    const alreadyInWatchlist = await db.isInShowWatchlist(user._id, showId)
+    const alreadyInWatchlist = await db.isInWatchlist(user._id, 'show', showId)
     if (alreadyInWatchlist) {
       return res.status(409).json({ error: 'Show is already in watchlist' })
     }
 
-    const watchlistItemId = await db.addToShowWatchlist(user._id, showId, notes, priority)
+    const watchlistItemId = await db.addToWatchlistWithData(user._id, 'show', showId, notes, priority)
 
     return res.status(201).json({
       message: 'Show added to watchlist successfully',
@@ -1624,41 +2175,28 @@ app.put("/api/shows/watchlist", async (req, res) => {
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return res.status(401).json({ error: 'Authorization header required' })
     }
-
     const token = authHeader.substring(7)
     const user = await AuthService.verifySession(token)
-
     if (!user) {
       return res.status(401).json({ error: 'Invalid or expired token' })
     }
 
     const { showId, notes, priority } = req.body
-
     if (!showId) {
       return res.status(400).json({ error: 'Show ID is required' })
     }
 
-    if (!notes && !priority) {
-      return res.status(400).json({ error: 'At least one field (notes or priority) must be provided' })
-    }
-
-    if (priority && !['low', 'medium', 'high'].includes(priority)) {
-      return res.status(400).json({ error: 'Priority must be one of: low, medium, high' })
-    }
-
-    const updates = {}
-    if (notes !== undefined) updates.notes = notes
-    if (priority !== undefined) updates.priority = priority
-
-    const updated = await db.updateShowWatchlistItem(user._id, showId, updates)
+    const updated = await db.updateWatchlistItem(user._id, 'show', showId, { notes, priority })
 
     if (!updated) {
       return res.status(404).json({ error: 'Show not found in watchlist' })
     }
 
-    return res.status(200).json({ message: 'Watchlist item updated successfully' })
+    return res.status(200).json({
+      message: 'Show watchlist item updated successfully'
+    })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'Failed to update watchlist item' })
+    return res.status(500).json({ error: error.message || 'Failed to update show watchlist item' })
   }
 })
 
@@ -1668,31 +2206,33 @@ app.delete("/api/shows/watchlist", async (req, res) => {
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return res.status(401).json({ error: 'Authorization header required' })
     }
-
     const token = authHeader.substring(7)
     const user = await AuthService.verifySession(token)
-
     if (!user) {
       return res.status(401).json({ error: 'Invalid or expired token' })
     }
 
-    const showId = req.query.showId
-
+    const { showId } = req.query
     if (!showId) {
       return res.status(400).json({ error: 'Show ID is required' })
     }
 
-    const removed = await db.removeFromShowWatchlist(user._id, showId)
+    const deleted = await db.removeFromWatchlist(user._id, 'show', showId)
 
-    if (!removed) {
+    if (!deleted) {
       return res.status(404).json({ error: 'Show not found in watchlist' })
     }
 
-    return res.status(200).json({ message: 'Show removed from watchlist successfully' })
+    return res.status(200).json({
+      message: 'Show removed from watchlist successfully'
+    })
   } catch (error) {
     return res.status(500).json({ error: error.message || 'Failed to remove show from watchlist' })
   }
 })
+
+// Show Watchlist API endpoints have been merged into the unified watchlist API
+// Use /api/watchlist/collections endpoints for managing watchlist collections
 
 // Helper functions for auth handlers
 async function handleRegister(req, res, data) {

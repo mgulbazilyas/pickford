@@ -309,7 +309,7 @@
 								"profile"
 							]
 						},
-						"description": "Get current user profile with statistics"
+						"description": "Get current user profile with statistics and photo URL (if available)"
 					},
 					"response": []
 				},
@@ -329,7 +329,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"firstName\": \"Updated\",\n  \"lastName\": \"Name\",\n  \"bio\": \"Updated user biography\",\n  \"avatar\": \"https://example.com/avatar.jpg\"\n}"
+							"raw": "{\n  \"firstName\": \"Updated\",\n  \"lastName\": \"Name\",\n  \"bio\": \"Updated user biography\",\n  \"avatar\": \"https://example.com/avatar.jpg\",\n  \"photo\": \"{{userPhotoUrl}}\"\n}"
 						},
 						"url": {
 							"raw": "{{baseUrl}}/api/user/profile",
@@ -342,12 +342,173 @@
 								"profile"
 							]
 						},
-						"description": "Update user profile information"
+						"description": "Update user profile information including photo URL"
 					},
 					"response": []
 				}
 			],
 			"description": "User profile management endpoints"
+		},
+		{
+			"name": "User Photo Management",
+			"item": [
+				{
+					"name": "Upload User Photo",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    const response = pm.response.json();",
+									"    pm.collectionVariables.set('userPhotoUrl', response.photoUrl);",
+									"    console.log('Photo uploaded successfully:', response.photoUrl);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							}
+						],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "photo",
+									"type": "file",
+									"src": []
+								}
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/user/photo",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"user",
+								"photo"
+							]
+						},
+						"description": "Upload a user profile photo (max 5MB, image files only)"
+					},
+					"response": []
+				},
+				{
+					"name": "Update User Photo",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    const response = pm.response.json();",
+									"    pm.collectionVariables.set('userPhotoUrl', response.photoUrl);",
+									"    console.log('Photo updated successfully:', response.photoUrl);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							}
+						],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "photo",
+									"type": "file",
+									"src": []
+								}
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/user/photo",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"user",
+								"photo"
+							]
+						},
+						"description": "Update/replace user profile photo (deletes previous photo)"
+					},
+					"response": []
+				},
+				{
+					"name": "Delete User Photo",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    pm.collectionVariables.unset('userPhotoUrl');",
+									"    console.log('Photo deleted successfully');",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/user/photo",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"user",
+								"photo"
+							]
+						},
+						"description": "Delete user profile photo"
+					},
+					"response": []
+				},
+				{
+					"name": "View User Photo (Public)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}{{userPhotoUrl}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": "{{userPhotoUrl}}"
+						},
+						"description": "Access user photo publicly (no authentication required)"
+					},
+					"response": []
+				}
+			],
+			"description": "User photo management endpoints with file upload and public access"
 		},
 		{
 			"name": "Movies & Shows",
@@ -633,10 +794,10 @@
 			"description": "Movie and TV show data from Trakt API with MongoDB caching"
 		},
 		{
-			"name": "Movies Watchlist",
+			"name": "Watchlist Collections",
 			"item": [
 				{
-					"name": "Get Watchlist (Basic)",
+					"name": "Get Watchlist Collections",
 					"request": {
 						"method": "GET",
 						"header": [
@@ -646,13 +807,148 @@
 							}
 						],
 						"url": {
-							"raw": "{{baseUrl}}/api/watchlist?limit=10&skip=0",
+							"raw": "{{baseUrl}}/api/watchlist/collections",
 							"host": [
 								"{{baseUrl}}"
 							],
 							"path": [
 								"api",
-								"watchlist"
+								"watchlist",
+								"collections"
+							]
+						},
+						"description": "Get all watchlist collections for the authenticated user"
+					},
+					"response": []
+				},
+				{
+					"name": "Create Watchlist Collection",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201) {",
+									"    const response = pm.response.json();",
+									"    pm.collectionVariables.set('watchlistCollectionId', response.collectionId);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"My Favorites\",\n  \"description\": \"My favorite movies and shows\",\n  \"emoji\": \"⭐\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/watchlist/collections",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"watchlist",
+								"collections"
+							]
+						},
+						"description": "Create a new watchlist collection with custom name, description, and emoji"
+					},
+					"response": []
+				},
+				{
+					"name": "Update Watchlist Collection",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Updated Collection Name\",\n  \"description\": \"Updated description\",\n  \"emoji\": \"🎬\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/watchlist/collections/{{watchlistCollectionId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"watchlist",
+								"collections",
+								"{{watchlistCollectionId}}"
+							]
+						},
+						"description": "Update watchlist collection name, description, or emoji"
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Watchlist Collection",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/watchlist/collections/{{watchlistCollectionId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"watchlist",
+								"collections",
+								"{{watchlistCollectionId}}"
+							]
+						},
+						"description": "Delete a watchlist collection and all its items"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Collection Items (Basic)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/watchlist/collections/{{watchlistCollectionId}}/items?limit=10&skip=0",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"watchlist",
+								"collections",
+								"{{watchlistCollectionId}}",
+								"items"
 							],
 							"query": [
 								{
@@ -665,12 +961,221 @@
 								}
 							]
 						},
-						"description": "Get user's watchlist without content details (supports both movies and shows)"
+						"description": "Get items in a watchlist collection without content details"
 					},
 					"response": []
 				},
 				{
-					"name": "Get Watchlist (With Details)",
+					"name": "Get Collection Items (With Details)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/watchlist/collections/{{watchlistCollectionId}}/items?includeDetails=true&limit=10&skip=0",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"watchlist",
+								"collections",
+								"{{watchlistCollectionId}}",
+								"items"
+							],
+							"query": [
+								{
+									"key": "includeDetails",
+									"value": "true"
+								},
+								{
+									"key": "limit",
+									"value": "10"
+								},
+								{
+									"key": "skip",
+									"value": "0"
+								}
+							]
+						},
+						"description": "Get items in a watchlist collection with full content details from Trakt API"
+					},
+					"response": []
+				},
+				{
+					"name": "Add Movie to Collection",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201) {",
+									"    const response = pm.response.json();",
+									"    pm.collectionVariables.set('watchlistItemId', response.itemId);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"type\": \"movie\",\n  \"contentId\": \"1390\",\n  \"notes\": \"Looking forward to watching this movie\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/watchlist/collections/{{watchlistCollectionId}}/items",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"watchlist",
+								"collections",
+								"{{watchlistCollectionId}}",
+								"items"
+							]
+						},
+						"description": "Add a movie to a watchlist collection"
+					},
+					"response": []
+				},
+				{
+					"name": "Add Show to Collection",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201) {",
+									"    const response = pm.response.json();",
+									"    pm.collectionVariables.set('watchlistItemId', response.itemId);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"type\": \"show\",\n  \"contentId\": \"1\",\n  \"notes\": \"Can't wait to binge this show\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/watchlist/collections/{{watchlistCollectionId}}/items",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"watchlist",
+								"collections",
+								"{{watchlistCollectionId}}",
+								"items"
+							]
+						},
+						"description": "Add a TV show to a watchlist collection"
+					},
+					"response": []
+				},
+				{
+					"name": "Update Collection Item",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"notes\": \"Updated notes about this item\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/watchlist/collections/{{watchlistCollectionId}}/items/{{watchlistItemId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"watchlist",
+								"collections",
+								"{{watchlistCollectionId}}",
+								"items",
+								"{{watchlistItemId}}"
+							]
+						},
+						"description": "Update notes for an item in a watchlist collection"
+					},
+					"response": []
+				},
+				{
+					"name": "Remove Item from Collection",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/watchlist/collections/{{watchlistCollectionId}}/items/{{watchlistItemId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"watchlist",
+								"collections",
+								"{{watchlistCollectionId}}",
+								"items",
+								"{{watchlistItemId}}"
+							]
+						},
+						"description": "Remove an item from a watchlist collection"
+					},
+					"response": []
+				}
+			],
+			"description": "Unified watchlist collection management with support for both movies and shows"
+		},
+		{
+			"name": "Legacy Watchlist (Backward Compatibility)",
+			"item": [
+				{
+					"name": "Get Watchlist (Legacy)",
 					"request": {
 						"method": "GET",
 						"header": [
@@ -703,12 +1208,12 @@
 								}
 							]
 						},
-						"description": "Get user's watchlist with full content details from Trakt API"
+						"description": "Get user's watchlist using legacy endpoint (returns first collection)"
 					},
 					"response": []
 				},
 				{
-					"name": "Add Movie to Watchlist",
+					"name": "Add Movie to Watchlist (Legacy)",
 					"event": [
 						{
 							"listen": "test",
@@ -737,7 +1242,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"movieId\": \"1390\",\n  \"notes\": \"Looking forward to watching this movie\",\n  \"priority\": \"high\"\n}"
+							"raw": "{\n  \"movieId\": \"1390\",\n  \"notes\": \"Looking forward to watching this\",\n  \"priority\": \"high\"\n}"
 						},
 						"url": {
 							"raw": "{{baseUrl}}/api/watchlist",
@@ -749,12 +1254,58 @@
 								"watchlist"
 							]
 						},
-						"description": "Add a movie to user's watchlist"
+						"description": "Add a movie to watchlist using legacy endpoint (adds to first collection)"
 					},
 					"response": []
 				},
 				{
-					"name": "Update Watchlist Item",
+					"name": "Add Show to Watchlist (Legacy)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201) {",
+									"    const response = pm.response.json();",
+									"    pm.collectionVariables.set('watchlistItemId', response.watchlistItemId);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"showId\": \"1\",\n  \"notes\": \"Can't wait to binge this show\",\n  \"priority\": \"high\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/watchlist",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"watchlist"
+							]
+						},
+						"description": "Add a TV show to watchlist using legacy endpoint (adds to first collection)"
+					},
+					"response": []
+				},
+				{
+					"name": "Update Watchlist Item (Legacy)",
 					"request": {
 						"method": "PUT",
 						"header": [
@@ -781,12 +1332,12 @@
 								"watchlist"
 							]
 						},
-						"description": "Update watchlist item notes or priority for movies"
+						"description": "Update watchlist item using legacy endpoint"
 					},
 					"response": []
 				},
 				{
-					"name": "Remove Movie from Watchlist",
+					"name": "Remove Movie from Watchlist (Legacy)",
 					"request": {
 						"method": "DELETE",
 						"header": [
@@ -811,137 +1362,12 @@
 								}
 							]
 						},
-						"description": "Remove a movie from user's watchlist"
-					},
-					"response": []
-				}
-			],
-			"description": "Movie watchlist management endpoints"
-		},
-		{
-			"name": "Shows Watchlist",
-			"item": [
-				{
-					"name": "Get Shows Watchlist",
-					"request": {
-						"method": "GET",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{authToken}}"
-							}
-						],
-						"url": {
-							"raw": "{{baseUrl}}/api/shows/watchlist?includeDetails=true&limit=10&skip=0",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"path": [
-								"api",
-								"shows",
-								"watchlist"
-							],
-							"query": [
-								{
-									"key": "includeDetails",
-									"value": "true"
-								},
-								{
-									"key": "limit",
-									"value": "10"
-								},
-								{
-									"key": "skip",
-									"value": "0"
-								}
-							]
-						},
-						"description": "Get shows watchlist with full details from Trakt API"
+						"description": "Remove a movie from watchlist using legacy endpoint"
 					},
 					"response": []
 				},
 				{
-					"name": "Add Show to Watchlist",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"if (pm.response.code === 201) {",
-									"    const response = pm.response.json();",
-									"    pm.collectionVariables.set('showWatchlistItemId', response.watchlistItemId);",
-									"}"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{authToken}}"
-							},
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"showId\": \"1\",\n  \"notes\": \"Can't wait to binge this show\",\n  \"priority\": \"high\"\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}/api/shows/watchlist",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"path": [
-								"api",
-								"shows",
-								"watchlist"
-							]
-						},
-						"description": "Add a TV show to user's watchlist"
-					},
-					"response": []
-				},
-				{
-					"name": "Update Show Watchlist Item",
-					"request": {
-						"method": "PUT",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{authToken}}"
-							},
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"showId\": \"1\",\n  \"notes\": \"Updated notes about this show\",\n  \"priority\": \"medium\"\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}/api/shows/watchlist",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"path": [
-								"api",
-								"shows",
-								"watchlist"
-							]
-						},
-						"description": "Update show watchlist item notes or priority"
-					},
-					"response": []
-				},
-				{
-					"name": "Remove Show from Watchlist",
+					"name": "Remove Show from Watchlist (Legacy)",
 					"request": {
 						"method": "DELETE",
 						"header": [
@@ -951,13 +1377,12 @@
 							}
 						],
 						"url": {
-							"raw": "{{baseUrl}}/api/shows/watchlist?showId=1",
+							"raw": "{{baseUrl}}/api/watchlist?showId=1",
 							"host": [
 								"{{baseUrl}}"
 							],
 							"path": [
 								"api",
-								"shows",
 								"watchlist"
 							],
 							"query": [
@@ -967,12 +1392,12 @@
 								}
 							]
 						},
-						"description": "Remove a TV show from user's watchlist"
+						"description": "Remove a TV show from watchlist using legacy endpoint"
 					},
 					"response": []
 				}
 			],
-			"description": "TV show watchlist management endpoints"
+			"description": "Legacy watchlist endpoints for backward compatibility (supports both movies and shows)"
 		},
 		{
 			"name": "Movies Comments",
