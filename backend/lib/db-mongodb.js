@@ -10,21 +10,29 @@ class Database {
 
   async connect() {
     if (this.isConnected) return
-    
+
     const uri = process.env.MONGODB_URI || 'mongodb://localhost:27017'
     const dbName = process.env.MONGODB_DB || 'trakt-proxy'
-
     try {
-      this.client = new MongoClient(uri)
+      console.log('[mongodb] Attempting to connect to:', uri)
+      this.client = new MongoClient(uri, {
+        serverSelectionTimeoutMS: 5000, // 5 second timeout
+        connectTimeoutMS: 5000, // 5 second timeout
+        maxPoolSize: 10
+      })
+
+
       await this.client.connect()
       this.db = this.client.db(dbName)
       this.isConnected = true
       this.configured = true
-      console.log('[mongodb] Connected successfully')
+      console.log('[mongodb] Connected successfully to database:', dbName)
     } catch (error) {
-      console.error('[mongodb] Connection failed:', error)
+      console.error('[mongodb] Connection failed:', error.message)
       this.configured = false
-      throw error
+      this.isConnected = false
+      // Don't throw error, just continue without database
+      console.log('[mongodb] Continuing without database connection...')
     }
   }
 
@@ -1384,10 +1392,194 @@ class Database {
       }
     }
   }
+  // Activity tracking methods
+  async insertActivity(activityData) {
+    if (!this.isConnected) throw new Error("Database not configured")
+    
+    const activities = this.db.collection('user_activities')
+    const result = await activities.insertOne({
+      ...activityData,
+      _id: new ObjectId()
+    })
+    return result.insertedId
+  }
+
+  async getUserActivities(userId, options = {}) {
+    if (!this.isConnected) throw new Error("Database not configured")
+    
+    const activities = this.db.collection('user_activities')
+    const {
+      limit = 20,
+      skip = 0,
+      activityType,
+      resourceType,
+      startDate,
+      endDate
+    } = options
+
+    // Build query
+    const query = {
+      userId: new ObjectId(userId),
+      isActive: true
+    }
+
+    if (activityType) query.activityType = activityType
+    if (resourceType) query.resourceType = resourceType
+    if (startDate || endDate) {
+      query.createdAt = {}
+      if (startDate) query.createdAt.$gte = startDate
+      if (endDate) query.createdAt.$lte = endDate
+    }
+
+    // Get activities with pagination
+    const cursor = activities.find(query)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+
+    const activitiesArray = await cursor.toArray()
+
+    // Get total count for pagination
+    const totalCount = await activities.countDocuments(query)
+
+    return {
+      activities: activitiesArray,
+      pagination: {
+        page: Math.floor(skip / limit) + 1,
+        limit,
+        totalCount,
+        totalPages: Math.ceil(totalCount / limit)
+      }
+    }
+  }
+
+  async getAllActivities(options = {}) {
+    if (!this.isConnected) throw new Error("Database not configured")
+    
+    const activities = this.db.collection('user_activities')
+    const {
+      limit = 50,
+      skip = 0,
+      userId,
+      activityType,
+      resourceType,
+      startDate,
+      endDate
+    } = options
+
+    // Build query
+    const query = { isActive: true }
+
+    if (userId) query.userId = new ObjectId(userId)
+    if (activityType) query.activityType = activityType
+    if (resourceType) query.resourceType = resourceType
+    if (startDate || endDate) {
+      query.createdAt = {}
+      if (startDate) query.createdAt.$gte = startDate
+      if (endDate) query.createdAt.$lte = endDate
+    }
+
+    // Get activities with pagination
+    const cursor = activities.find(query)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+
+    const activitiesArray = await cursor.toArray()
+
+    // Get total count for pagination
+    const totalCount = await activities.countDocuments(query)
+
+    return {
+      activities: activitiesArray,
+      pagination: {
+        page: Math.floor(skip / limit) + 1,
+        limit,
+        totalCount,
+        totalPages: Math.ceil(totalCount / limit)
+      }
+    }
+  }
+
+  async getUserActivityStats(userId, options = {}) {
+    if (!this.isConnected) throw new Error("Database not configured")
+    
+    const activities = this.db.collection('user_activities')
+    const { startDate, endDate } = options
+
+    // Build query
+    const query = {
+      userId: new ObjectId(userId),
+      isActive: true
+    }
+
+    if (startDate || endDate) {
+      query.createdAt = {}
+      if (startDate) query.createdAt.$gte = startDate
+      if (endDate) query.createdAt.$lte = endDate
+    }
+
+    // Aggregate statistics
+    const pipeline = [
+      { $match: query },
+      {
+        $group: {
+          _id: '$activityType',
+          count: { $sum: 1 },
+          lastActivity: { $max: '$createdAt' }
+        }
+      },
+      { $sort: { count: -1 } }
+    ]
+
+    const stats = await activities.aggregate(pipeline).toArray()
+
+    // Get total activity count
+    const totalCount = await activities.countDocuments(query)
+
+    return {
+      totalActivities: totalCount,
+      activityBreakdown: stats,
+      period: {
+        startDate: startDate || null,
+        endDate: endDate || null
+      }
+    }
+  }
+
+  async deleteOldActivities(cutoffDate) {
+    if (!this.isConnected) throw new Error("Database not configured")
+    
+    const activities = this.db.collection('user_activities')
+    
+    const result = await activities.deleteMany({
+      createdAt: { $lt: cutoffDate }
+    })
+
+    return {
+      deletedCount: result.deletedCount,
+      cutoffDate
+    }
+  }
+
+  async createActivityIndexes() {
+    if (!this.isConnected) throw new Error("Database not configured")
+    
+    const activities = this.db.collection('user_activities')
+    
+    // Create indexes for optimal performance
+    await activities.createIndex({ userId: 1, createdAt: -1 })
+    await activities.createIndex({ activityType: 1, createdAt: -1 })
+    await activities.createIndex({ resourceType: 1, resourceId: 1, createdAt: -1 })
+    await activities.createIndex({ createdAt: 1 }, { expireAfterSeconds: 7776000 }) // 90 days TTL
+    await activities.createIndex({ isActive: 1 })
+    
+    console.log('[mongodb] Activity indexes created successfully')
+  }
 }
 
 // Create singleton instance
 const db = new Database()
 
-// Export the instance
+// Export instance
 module.exports = { db }

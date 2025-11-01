@@ -21,15 +21,19 @@ if (process.env.NODE_ENV === 'production') {
 // MongoDB database instance
 const { db } = require('./lib/db-mongodb')
 const { AuthService } = require('./lib/auth')
+// const { activityMiddleware } = require('./lib/activity-middleware') // Temporarily disabled
 
 // Initialize database connection
 async function initializeDatabase() {
-  try {
-    await db.connect()
+  console.log('[app] Initializing database connection...')
+  await db.connect()
+
+  if (db.isConnected) {
     console.log('[app] Database initialized successfully')
-  } catch (error) {
-    console.error('[app] Failed to initialize database:', error)
-    // Continue running but with limited functionality
+    // Create activity indexes for optimal performance
+    await db.createActivityIndexes()
+  } else {
+    console.log('[app] Database not available - running in limited mode')
   }
 }
 
@@ -70,6 +74,9 @@ app.use((req, res, next) => {
   next()
 })
 
+// Activity tracking middleware temporarily disabled due to performance issues
+// app.use(activityMiddleware)
+
 // Helper function to parse query parameters
 function parseQueryParams(query) {
   const limit = Math.max(1, Math.min(100, Number(query.limit || 20)))
@@ -83,7 +90,13 @@ app.get("/", (req, res) => {
     message: "Trakt API Proxy",
     version: "1.0.0",
     status: "running",
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    database: {
+      connected: db.isConnected
+    },
+    memory: process.memoryUsage(),
+    cpu: process.cpuUsage()
   })
 })
 
@@ -400,6 +413,7 @@ app.post("/api/auth/login", async (req, res) => {
   try {
     const { db } = require('./lib/db-mongodb');
     const { UserService } = require('./lib/user-service');
+    const { ActivityService } = require('./lib/activity-service');
 
     // Ensure database connection
     if (!db.isConnected) {
@@ -410,6 +424,10 @@ app.post("/api/auth/login", async (req, res) => {
 
     // Login user
     const { user, session } = await UserService.loginUser(email, password);
+
+    // Log activity using the simple activity logger
+    const { activityLogger } = require('./lib/activity-logger');
+    await activityLogger.logLogin(user._id, req);
 
     return res.status(200).json({
       success: true,
@@ -591,6 +609,13 @@ app.post("/api/auth/logout", async (req, res) => {
     }
 
     const token = authHeader.substring(7);
+    const user = await AuthService.verifySession(token);
+    
+    // Set user for activity logging
+    if (user) {
+      req.user = user;
+    }
+    
     await AuthService.destroySession(token);
 
     return res.status(200).json({
@@ -754,6 +779,9 @@ app.put("/api/auth/profile", async (req, res) => {
     }
 
     const { firstName, lastName, bio, avatar, preferences } = req.body;
+
+    // Set user for activity logging
+    req.user = user;
 
     // Update user profile
     const updatedProfile = await UserService.updateUserProfile(user._id, {
@@ -1064,6 +1092,10 @@ app.post("/api/comments", async (req, res) => {
       isSpoiler,
     })
 
+    // Log activity using the simple activity logger
+    const { activityLogger } = require('./lib/activity-logger');
+    await activityLogger.logCommentCreate(user._id, commentId.toString(), movieId, null, req);
+
     return res.status(201).json({
       message: 'Comment created successfully',
       commentId: commentId.toString()
@@ -1259,6 +1291,10 @@ app.post("/api/ratings", async (req, res) => {
         review: review?.trim() || null,
       })
 
+      // Log activity for rating update
+      const { activityLogger } = require('./lib/activity-logger');
+      await activityLogger.logRatingCreate(user._id, existingRating._id.toString(), movieId, null, rating, req);
+
       return res.status(200).json({
         message: 'Rating updated successfully',
         ratingId: existingRating._id.toString()
@@ -1270,6 +1306,10 @@ app.post("/api/ratings", async (req, res) => {
         rating,
         review: review?.trim() || null,
       })
+
+      // Log activity for rating creation
+      const { activityLogger } = require('./lib/activity-logger');
+      await activityLogger.logRatingCreate(user._id, ratingId.toString(), movieId, null, rating, req);
 
       return res.status(201).json({
         message: 'Rating created successfully',
@@ -1638,6 +1678,9 @@ app.post("/api/watchlist", async (req, res) => {
     if (alreadyInWatchlist) {
       return res.status(409).json({ error: `${contentType === 'movie' ? 'Movie' : 'Show'} is already in watchlist` })
     }
+
+    // Set user for activity logging
+    req.user = user;
 
     const watchlistItemId = await db.addToWatchlistWithData(user._id, contentType, contentId, notes, priority)
 
@@ -3148,6 +3191,198 @@ app.get("/api/stripe/events/user/:userId", async (req, res) => {
     return res.status(400).json({
       success: false,
       message: error.message || 'Failed to get user stripe events'
+    });
+  }
+});
+
+// Activity tracking API endpoints
+app.get("/api/activities/users/:userId", async (req, res) => {
+  try {
+    const { db } = require('./lib/db-mongodb');
+    const { ActivityService } = require('./lib/activity-service');
+
+    // Ensure database connection
+    if (!db.isConnected) {
+      await db.connect();
+    }
+
+    const authHeader = req.get('authorization');
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({
+        success: false,
+        message: 'Access token is required'
+      });
+    }
+
+    const token = authHeader.substring(7);
+    const currentUser = await AuthService.verifySession(token);
+    
+    if (!currentUser) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid or expired token'
+      });
+    }
+
+    const { userId } = req.params;
+    const { limit, skip } = parseQueryParams(req.query);
+    const { activityType, resourceType, startDate, endDate } = req.query;
+
+    // Users can only view their own activities (unless admin)
+    if (currentUser._id.toString() !== userId) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied'
+      });
+    }
+
+    // Parse date filters
+    const parsedStartDate = startDate ? new Date(startDate) : undefined;
+    const parsedEndDate = endDate ? new Date(endDate) : undefined;
+
+    const result = await ActivityService.getUserActivities(userId, {
+      limit,
+      skip,
+      activityType,
+      resourceType,
+      startDate: parsedStartDate,
+      endDate: parsedEndDate
+    });
+
+    return res.status(200).json({
+      success: true,
+      ...result
+    });
+
+  } catch (error) {
+    console.error('Get user activities error:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to get user activities'
+    });
+  }
+});
+
+app.get("/api/activities", async (req, res) => {
+  try {
+    const { db } = require('./lib/db-mongodb');
+    const { ActivityService } = require('./lib/activity-service');
+
+    // Ensure database connection
+    if (!db.isConnected) {
+      await db.connect();
+    }
+
+    const authHeader = req.get('authorization');
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({
+        success: false,
+        message: 'Access token is required'
+      });
+    }
+
+    const token = authHeader.substring(7);
+    const currentUser = await AuthService.verifySession(token);
+    
+    if (!currentUser) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid or expired token'
+      });
+    }
+
+    // TODO: Add admin role check if needed
+    // For now, any authenticated user can view all activities
+    
+    const { limit, skip } = parseQueryParams(req.query);
+    const { userId, activityType, resourceType, startDate, endDate } = req.query;
+
+    // Parse date filters
+    const parsedStartDate = startDate ? new Date(startDate) : undefined;
+    const parsedEndDate = endDate ? new Date(endDate) : undefined;
+
+    const result = await ActivityService.getAllActivities({
+      limit,
+      skip,
+      userId,
+      activityType,
+      resourceType,
+      startDate: parsedStartDate,
+      endDate: parsedEndDate
+    });
+
+    return res.status(200).json({
+      success: true,
+      ...result
+    });
+
+  } catch (error) {
+    console.error('Get all activities error:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to get activities'
+    });
+  }
+});
+
+app.get("/api/activities/users/:userId/stats", async (req, res) => {
+  try {
+    const { db } = require('./lib/db-mongodb');
+    const { ActivityService } = require('./lib/activity-service');
+
+    // Ensure database connection
+    if (!db.isConnected) {
+      await db.connect();
+    }
+
+    const authHeader = req.get('authorization');
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({
+        success: false,
+        message: 'Access token is required'
+      });
+    }
+
+    const token = authHeader.substring(7);
+    const currentUser = await AuthService.verifySession(token);
+    
+    if (!currentUser) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid or expired token'
+      });
+    }
+
+    const { userId } = req.params;
+    const { startDate, endDate } = req.query;
+
+    // Users can only view their own activity stats
+    if (currentUser._id.toString() !== userId) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied'
+      });
+    }
+
+    // Parse date filters
+    const parsedStartDate = startDate ? new Date(startDate) : undefined;
+    const parsedEndDate = endDate ? new Date(endDate) : undefined;
+
+    const stats = await ActivityService.getUserActivityStats(userId, {
+      startDate: parsedStartDate,
+      endDate: parsedEndDate
+    });
+
+    return res.status(200).json({
+      success: true,
+      stats
+    });
+
+  } catch (error) {
+    console.error('Get user activity stats error:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to get user activity stats'
     });
   }
 });
